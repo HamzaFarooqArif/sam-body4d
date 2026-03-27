@@ -45,8 +45,34 @@ echo "[OK]  Python 3.12 venv ready"
 
 # ---- Step 3: Install PyTorch + dependencies ----
 echo "[3/6] Installing PyTorch and dependencies..."
-if ! python -c "import torch; assert 'cu12' in torch.version.cuda or True" 2>/dev/null; then
-    pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu126 -q
+
+# Auto-detect system CUDA version and pick matching PyTorch
+detect_cuda_index() {
+    # Get CUDA version from nvidia-smi (e.g., "12.8" -> try cu126, cu124, cu121)
+    local cuda_ver=$(nvidia-smi 2>/dev/null | grep "CUDA Version" | awk '{print $9}')
+    local cuda_major=$(echo "$cuda_ver" | cut -d. -f1)
+    local cuda_minor=$(echo "$cuda_ver" | cut -d. -f2)
+
+    if [ "$cuda_major" = "12" ]; then
+        # Try cu126 first (works for CUDA 12.6+), then cu124, then cu121
+        for idx in cu126 cu124 cu121; do
+            if pip install --dry-run torch==2.7.1 --index-url "https://download.pytorch.org/whl/${idx}" -q 2>/dev/null; then
+                echo "$idx"
+                return
+            fi
+        done
+        echo "cu126"  # fallback
+    elif [ "$cuda_major" = "11" ]; then
+        echo "cu118"
+    else
+        echo "cu126"  # default
+    fi
+}
+
+if ! python -c "import torch; torch.cuda.is_available()" 2>/dev/null; then
+    CUDA_IDX=$(detect_cuda_index)
+    echo "  Detected CUDA index: ${CUDA_IDX}"
+    pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url "https://download.pytorch.org/whl/${CUDA_IDX}" -q
 else
     echo "  (PyTorch already installed)"
 fi
