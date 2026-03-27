@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  sam-body4d:
+    build: .
+    image: sam-body4d:latest
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./outputs:/app/outputs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - PYOPENGL_PLATFORM=egl
+    restart: unless-stopped
