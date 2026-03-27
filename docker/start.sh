@@ -10,8 +10,8 @@ echo "============================================"
 echo ""
 
 # ---- Pull latest code from GitHub ----
-GITHUB_REPO="${GITHUB_REPO:-https://github.com/hamzafarooqarif/sam-body4d.git}"
-GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
+GITHUB_REPO="${GITHUB_REPO:-https://github.com/HamzaFarooqArif/sam-body4d.git}"
+GITHUB_BRANCH="${GITHUB_BRANCH:-master}"
 CODE_DIR="/app/code"
 
 echo "Pulling latest code from ${GITHUB_REPO} (${GITHUB_BRANCH})..."
