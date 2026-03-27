@@ -53,7 +53,10 @@ detect_cuda_index() {
     local cuda_major=$(echo "$cuda_ver" | cut -d. -f1)
     local cuda_minor=$(echo "$cuda_ver" | cut -d. -f2)
 
-    if [ "$cuda_major" = "12" ]; then
+    if [ -z "$cuda_major" ] || [ -z "$cuda_ver" ]; then
+        # No CUDA/GPU detected — install CPU-only (won't run models but won't crash setup)
+        echo "cpu"
+    elif [ "$cuda_major" = "12" ]; then
         # Try cu126 first (works for CUDA 12.6+), then cu124, then cu121
         for idx in cu126 cu124 cu121; do
             if pip install --dry-run torch==2.7.1 --index-url "https://download.pytorch.org/whl/${idx}" -q 2>/dev/null; then
