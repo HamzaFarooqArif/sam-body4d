@@ -148,10 +148,10 @@ def build_ui(pipeline):
 
         return working_path, fps, first_frame, slider_cfg, time_text, info
 
-    def on_upload(video_path, framerate_pct):
-        if video_path is None:
+    def on_upload(file_obj, framerate_pct):
+        if file_obj is None:
             return prepare_video(None)
-        return prepare_video(video_path, framerate_pct)
+        return prepare_video(file_obj.name, framerate_pct)
 
     def on_example_select(evt: gr.SelectData, framerate_pct):
         idx = evt.index
@@ -411,7 +411,7 @@ def build_ui(pipeline):
                 toggle_upload_btn = gr.Button("Upload Video (click to open)", size="sm", variant="secondary")
                 upload_panel = gr.Row(visible=False)
                 with upload_panel:
-                    upload = gr.Video(label="Upload Video (.mp4)", sources=["upload"])
+                    upload = gr.File(label="Video File (.mp4)", file_count="single")
                 with gr.Row():
                     framerate_slider = gr.Slider(minimum=10, maximum=100, value=100, step=5, label="Processing Frame Rate (%)", info="100% = all frames, 50% = every 2nd frame", scale=3)
                     apply_fps_btn = gr.Button("Apply", size="sm", scale=1)
