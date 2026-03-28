@@ -183,6 +183,7 @@ def build_ui(pipeline):
         if video_path is None or runtime_holder['runtime'] is None:
             return None
         x, y = evt.index
+        print(f"[UI] on_click: frame_idx={frame_idx}, x={x}, y={y}, point_type={point_type}")
         frame = pipeline.read_frame_at(video_path, int(frame_idx))
         if frame is None:
             raise gr.Error(f"Failed to read frame {frame_idx}.")

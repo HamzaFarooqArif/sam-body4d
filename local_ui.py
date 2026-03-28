@@ -111,9 +111,13 @@ class RemotePipeline:
         if not self._session_id:
             return None, runtime
 
+        # Map local frame index to original video frame index
+        frame_step = runtime.get('frame_step', 1) if runtime else 1
+        original_frame_idx = int(frame_idx) * frame_step
+
         r = requests.post(f"{self.api_url}/add_point", data={
             "session_id": self._session_id,
-            "frame_idx": int(frame_idx),
+            "frame_idx": original_frame_idx,
             "x": int(x),
             "y": int(y),
             "point_type": point_type.lower(),
