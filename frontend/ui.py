@@ -168,35 +168,74 @@ def build_ui(pipeline):
         label = "Upload Video (click to close)" if new_state else "Upload Video (click to open)"
         return new_state, gr.update(visible=new_state), gr.update(value=label)
 
+    def _progress_html(label, pct, time_str):
+        """Generate HTML progress bar."""
+        bar_width = max(0, min(pct, 100))
+        return f"""
+        <div style="padding: 40px 20px; text-align: center; background: #1a1a2e; border-radius: 8px; min-height: 200px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            <div style="font-size: 18px; color: #e0e0e0; margin-bottom: 16px;">{label}</div>
+            <div style="width: 80%; background: #2a2a4a; border-radius: 10px; height: 24px; overflow: hidden; margin-bottom: 12px;">
+                <div style="width: {bar_width}%; background: linear-gradient(90deg, #4a9eff, #7c3aed); height: 100%; border-radius: 10px; transition: width 0.5s ease;"></div>
+            </div>
+            <div style="font-size: 24px; font-weight: bold; color: #4a9eff;">{pct}%</div>
+            <div style="font-size: 14px; color: #888; margin-top: 8px;">{time_str} elapsed</div>
+        </div>
+        """
+
+    def _ready_html(label):
+        return f"""
+        <div style="padding: 40px 20px; text-align: center; background: #1a2e1a; border-radius: 8px; min-height: 60px; display: flex; justify-content: center; align-items: center;">
+            <div style="font-size: 18px; color: #4ade80;">{label} complete!</div>
+        </div>
+        """
+
     def on_mask_generation(video_path):
         if video_path is None or runtime_holder['runtime'] is None:
             raise gr.Error("No video loaded.")
         runtime_holder['job_label'] = "Mask generation"
         runtime_holder['job_start_time'] = _time.time()
+        runtime_holder['job_target'] = 'mask'
 
-        # If pipeline supports job tracking, use it
         if has_job_progress:
             runtime_holder['job_id'] = 'starting'
         result = pipeline.generate_masks(runtime_holder['runtime'], runtime_holder['output_dir'])
         runtime_holder['job_id'] = None
         runtime_holder['job_label'] = None
-        return result, "**Status:** Mask generation complete! &#9989;"
+        runtime_holder['job_target'] = None
+        return gr.update(visible=False), gr.update(value=result, visible=True), gr.update(visible=True), gr.update(visible=True)
 
     def on_4d_generation(video_path):
         if video_path is None or runtime_holder['runtime'] is None:
             raise gr.Error("No video loaded.")
         runtime_holder['job_label'] = "4D generation"
         runtime_holder['job_start_time'] = _time.time()
+        runtime_holder['job_target'] = '4d'
 
         if has_job_progress:
             runtime_holder['job_id'] = 'starting'
         result = pipeline.generate_4d(runtime_holder['runtime'], runtime_holder['output_dir'])
         runtime_holder['job_id'] = None
         runtime_holder['job_label'] = None
-        return result, "**Status:** 4D generation complete! &#9989;"
+        runtime_holder['job_target'] = None
+        # outputs: fourd_progress, fourd_display, mask_progress, result_display
+        return gr.update(visible=False), gr.update(value=result, visible=True), gr.update(visible=False), gr.update(visible=True)
 
-    def poll_status():
-        """Called by Timer every 2 seconds to update status text."""
+    def on_mask_start(video_path):
+        if video_path is None or runtime_holder['runtime'] is None:
+            raise gr.Error("No video loaded.")
+        html = _progress_html("Mask generation", 0, "0s")
+        # outputs: mask_progress, result_display, fourd_progress, fourd_display
+        return gr.update(value=html, visible=True), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+
+    def on_4d_start(video_path):
+        if video_path is None or runtime_holder['runtime'] is None:
+            raise gr.Error("No video loaded.")
+        html = _progress_html("4D generation (~6 min)", 0, "0s")
+        # outputs: fourd_progress, fourd_display, mask_progress, result_display
+        return gr.update(value=html, visible=True), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+
+    def poll_progress():
+        """Called by Timer every 2 seconds to update progress display."""
         job_label = runtime_holder.get('job_label')
         if not job_label:
             return gr.update()
@@ -206,19 +245,11 @@ def build_ui(pipeline):
         secs = int(elapsed) % 60
         time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
 
-        # Try to get real progress from pipeline
-        pct = None
+        pct = 0
         if has_job_progress:
-            pct = pipeline.get_job_progress()
+            pct = pipeline.get_job_progress() or 0
 
-        if pct is not None and pct > 0:
-            bar_fill = int(pct / 5)  # 20 chars max
-            bar_empty = 20 - bar_fill
-            bar = "█" * bar_fill + "░" * bar_empty
-            return f"**Status:** {job_label}... {pct}% ({time_str})\n\n`{bar}` {pct}%"
-        else:
-            dots = "." * (int(elapsed) % 4 + 1)
-            return f"**Status:** {job_label}{dots} ({time_str})"
+        return _progress_html(job_label, pct, time_str)
 
     # ---- Layout ----
 
@@ -256,16 +287,27 @@ def build_ui(pipeline):
                 add_target_btn = gr.Button("Add Target")
 
             with gr.Column(scale=1):
-                status_text = gr.Markdown("**Status:** Ready", elem_id="status-text")
+                mask_progress = gr.HTML(visible=False)
                 result_display = gr.Video(label="Segmentation Result")
                 with gr.Row():
                     mask_gen_btn = gr.Button("Mask Generation")
                     gen4d_btn = gr.Button("4D Generation")
+                fourd_progress = gr.HTML(visible=False)
                 fourd_display = gr.Video(label="4D Result")
 
-        # ---- Timer for live status polling ----
+        # ---- Timer for live progress ----
+        def poll_both():
+            target = runtime_holder.get('job_target')
+            update = poll_progress()
+            if target == 'mask':
+                return update, gr.update()
+            elif target == '4d':
+                return gr.update(), update
+            else:
+                return gr.update(), gr.update()
+
         timer = gr.Timer(2)
-        timer.tick(fn=poll_status, outputs=[status_text])
+        timer.tick(fn=poll_both, outputs=[mask_progress, fourd_progress])
 
         # ---- Event bindings ----
         toggle_upload_btn.click(fn=toggle_upload, inputs=[upload_open_state], outputs=[upload_open_state, upload_panel, toggle_upload_btn])
@@ -275,7 +317,15 @@ def build_ui(pipeline):
         point_radio.change(fn=lambda v: v.lower(), inputs=[point_radio], outputs=[point_type_state])
         current_frame.select(fn=on_click, inputs=[point_type_state, video_state, frame_slider], outputs=[current_frame])
         add_target_btn.click(fn=add_target, inputs=[targets_state, selected_targets_state], outputs=[targets_state, selected_targets_state, targets_box])
-        mask_gen_btn.click(fn=on_mask_generation, inputs=[video_state], outputs=[result_display, status_text])
-        gen4d_btn.click(fn=on_4d_generation, inputs=[video_state], outputs=[fourd_display, status_text])
+        mask_gen_btn.click(
+            fn=on_mask_start, inputs=[video_state], outputs=[mask_progress, result_display, fourd_progress, fourd_display]
+        ).then(
+            fn=on_mask_generation, inputs=[video_state], outputs=[mask_progress, result_display, fourd_progress, fourd_display]
+        )
+        gen4d_btn.click(
+            fn=on_4d_start, inputs=[video_state], outputs=[fourd_progress, fourd_display, mask_progress, result_display]
+        ).then(
+            fn=on_4d_generation, inputs=[video_state], outputs=[fourd_progress, fourd_display, mask_progress, result_display]
+        )
 
     return demo
