@@ -245,9 +245,24 @@ def build_ui(pipeline):
         secs = int(elapsed) % 60
         time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
 
-        pct = 0
+        # Get real progress from pipeline
+        real_pct = 0
         if has_job_progress:
-            pct = pipeline.get_job_progress() or 0
+            real_pct = pipeline.get_job_progress() or 0
+
+        # Estimate progress based on time for smooth display
+        # Mask gen ~15s, 4D gen ~360s
+        target = runtime_holder.get('job_target')
+        if target == '4d':
+            est_total = 360  # ~6 minutes
+        else:
+            est_total = 20  # ~20 seconds
+
+        time_pct = min(95, int(100 * elapsed / est_total))
+
+        # Use whichever is higher — real progress or time estimate
+        # This ensures smooth progress that never goes backwards
+        pct = max(real_pct, time_pct)
 
         return _progress_html(job_label, pct, time_str)
 
