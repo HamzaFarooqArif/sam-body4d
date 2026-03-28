@@ -156,7 +156,7 @@ class RemotePipeline:
 
         return runtime
 
-    def _poll_job(self, job_id, label="Processing", progress_cb=None):
+    def _poll_job(self, job_id, label="Processing"):
         """Poll a job until done. Returns result path."""
         import requests
         import time
@@ -218,7 +218,7 @@ class RemotePipeline:
             raise RuntimeError(f"API error: {r.status_code} — {r.text}")
 
         job_id = r.json()["job_id"]
-        self._poll_job(job_id, "Mask generation", progress_cb)
+        self._poll_job(job_id, "Mask generation")
 
         out_path = self._download_job_result(job_id, output_dir, "mask_video.mp4")
         print(f"[RemotePipeline] Mask video saved to {out_path}")
@@ -239,7 +239,7 @@ class RemotePipeline:
             raise RuntimeError(f"API error: {r.status_code} — {r.text}")
 
         job_id = r.json()["job_id"]
-        self._poll_job(job_id, "4D generation", progress_cb)
+        self._poll_job(job_id, "4D generation")
 
         zip_path = self._download_job_result(job_id, output_dir, "results.zip")
 
