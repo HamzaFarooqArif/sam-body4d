@@ -254,6 +254,8 @@ class Pipeline:
         os.makedirs(os.path.join(output_dir, 'images'), exist_ok=True)
         os.makedirs(os.path.join(output_dir, 'masks'), exist_ok=True)
 
+        # Phase 1: SAM-3 propagation (0% - 70%)
+        total_est = runtime.get('total_frames', 100)
         video_segments = {}
         for frame_idx, obj_ids, low_res_masks, video_res_masks, obj_scores, iou_scores in self.predictor.propagate_in_video(
             runtime['inference_state'],
@@ -266,7 +268,10 @@ class Pipeline:
                 out_obj_id: (video_res_masks[i] > 0.0).cpu().numpy()
                 for i, out_obj_id in enumerate(runtime['out_obj_ids'])
             }
+            if progress_cb:
+                progress_cb(0.7 * (frame_idx + 1) / total_est)
 
+        # Phase 2: Save frames (70% - 100%)
         out_h = runtime['inference_state']['video_height']
         out_w = runtime['inference_state']['video_width']
         img_to_video = []
@@ -277,7 +282,7 @@ class Pipeline:
         total_frames = len(video_segments)
         for out_frame_idx in range(total_frames):
             if progress_cb:
-                progress_cb(out_frame_idx / total_frames)
+                progress_cb(0.7 + 0.3 * out_frame_idx / total_frames)
             img = runtime['inference_state']['images'][out_frame_idx].detach().float().cpu()
             img = (img + 1) / 2
             img = img.clamp(0, 1)
@@ -516,8 +521,11 @@ class Pipeline:
         total_batches = max(1, (n + batch_size - 1) // batch_size)
         batch_idx = 0
         for i in tqdm(range(0, n, batch_size)):
+            # Each batch has 4 stages: occlusion(25%), completion(25%), mesh(40%), render(10%)
+            batch_base = batch_idx / total_batches
+            batch_step = 1.0 / total_batches
             if progress_cb:
-                progress_cb(batch_idx / total_batches)
+                progress_cb(batch_base)
             batch_idx += 1
             batch_images = images_list[i:i + batch_size]
             batch_masks = masks_list[i:i + batch_size]
@@ -530,6 +538,8 @@ class Pipeline:
 
             if len(modal_pixels_list) > 0:
                 print("detect occlusions ...")
+                if progress_cb:
+                    progress_cb(batch_base + batch_step * 0.05)
                 for (modal_pixels, obj_id) in zip(modal_pixels_list, runtime['out_obj_ids']):
                     pred_amodal_masks = self.pipeline_mask(
                         modal_pixels[:, i:i + batch_size, :, :, :],
@@ -594,6 +604,8 @@ class Pipeline:
                         occ_dict[obj_id] = occ_dict_obj_id
 
                     print("content completion by diffusion-vas ...")
+                    if progress_cb:
+                        progress_cb(batch_base + batch_step * 0.35)
                     keep_idx = cap_consecutive_ones_by_iou(occ_dict[obj_id][start:end], iou_dict[obj_id][start:end])
                     mask_idx = torch.tensor(keep_idx, device=modal_rgb_pixels.device).bool()
                     pred_amodal_masks_current = pred_amodal_masks_com[start:end]
@@ -631,11 +643,15 @@ class Pipeline:
                 for obj_id in runtime['out_obj_ids']:
                     occ_dict[obj_id] = [1] * len(batch_masks)
 
+            if progress_cb:
+                progress_cb(batch_base + batch_step * 0.55)
             mask_outputs, id_batch, empty_frame_list = process_image_with_mask(
                 self.sam3_3d_body_model, batch_images, batch_masks,
                 idx_path, idx_dict, mhr_shape_scale_dict, occ_dict,
                 cam_int=cam_int, iou_dict=iou_dict, predictor=self.predictor,
             )
+            if progress_cb:
+                progress_cb(batch_base + batch_step * 0.90)
 
             num_empty_ids = 0
             for frame_id in range(len(batch_images)):
