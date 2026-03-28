@@ -119,7 +119,7 @@ def build_ui(pipeline):
 
     def update_frame(idx, path, fps):
         if path is None:
-            return None, "00:00 / 00:00"
+            return gr.update(value=None, visible=True), gr.update(visible=False), "00:00 / 00:00"
         idx = int(idx)
         frame = pipeline.read_frame_at(path, idx)
         if frame is None:
@@ -132,7 +132,7 @@ def build_ui(pipeline):
         cap.release()
         dur = total / fps if fps > 0 else 0.0
         end_text = f"{int(dur // 60):02d}:{int(dur % 60):02d}"
-        return frame, f"{cur_text} / {end_text}"
+        return gr.update(value=frame, visible=True), gr.update(visible=False), f"{cur_text} / {end_text}"
 
     def on_click(evt: gr.SelectData, point_type, video_path, frame_idx):
         if video_path is None or runtime_holder['runtime'] is None:
@@ -204,7 +204,7 @@ def build_ui(pipeline):
         writer.close()
 
         info = f"**Preview:** {len(selected_frames)} / {total} frames (every {step}) | Original FPS: {fps:.0f}"
-        return gr.update(value=preview_path, visible=True), info
+        return gr.update(visible=False), gr.update(value=preview_path, visible=True), info
 
     def on_framerate_change(pct):
         rt = runtime_holder.get('runtime')
@@ -375,6 +375,7 @@ def build_ui(pipeline):
                     label="Current Frame (click to annotate)",
                     interactive=True, sources=[],
                 )
+                preview_video = gr.Video(label="Frame Rate Preview (click frame to go back to annotation)", visible=False)
                 toggle_upload_btn = gr.Button("Upload Video (click to open)", size="sm", variant="secondary")
                 upload_panel = gr.Row(visible=False)
                 with upload_panel:
@@ -383,7 +384,6 @@ def build_ui(pipeline):
                     framerate_slider = gr.Slider(minimum=10, maximum=100, value=100, step=5, label="Processing Frame Rate (%)", info="100% = all frames, 50% = every 2nd frame", scale=3)
                     preview_fps_btn = gr.Button("Preview", size="sm", scale=1)
                 framerate_info = gr.Markdown("**Frames to process:** — / — | **Estimated speedup:** 1x")
-                preview_video = gr.Video(label="Frame Rate Preview", visible=False)
                 frame_slider = gr.Slider(minimum=0, maximum=0, value=0, step=1, label="Frame Index")
                 time_text = gr.Text("00:00 / 00:00", label="Time")
                 point_radio = gr.Radio(choices=["Positive", "Negative"], value="Positive", label="Point Type", interactive=True)
@@ -418,8 +418,8 @@ def build_ui(pipeline):
         upload.change(fn=on_upload, inputs=[upload], outputs=[video_state, fps_state, current_frame, frame_slider, time_text])
         examples_gallery.select(fn=on_example_select, inputs=None, outputs=[video_state, fps_state, current_frame, frame_slider, time_text])
         framerate_slider.change(fn=on_framerate_change, inputs=[framerate_slider], outputs=[framerate_info])
-        preview_fps_btn.click(fn=on_preview_fps, inputs=[video_state, framerate_slider], outputs=[preview_video, framerate_info])
-        frame_slider.change(fn=update_frame, inputs=[frame_slider, video_state, fps_state], outputs=[current_frame, time_text])
+        preview_fps_btn.click(fn=on_preview_fps, inputs=[video_state, framerate_slider], outputs=[current_frame, preview_video, framerate_info])
+        frame_slider.change(fn=update_frame, inputs=[frame_slider, video_state, fps_state], outputs=[current_frame, preview_video, time_text])
         point_radio.change(fn=lambda v: v.lower(), inputs=[point_radio], outputs=[point_type_state])
         current_frame.select(fn=on_click, inputs=[point_type_state, video_state, frame_slider], outputs=[current_frame])
         add_target_btn.click(fn=add_target, inputs=[targets_state, selected_targets_state], outputs=[targets_state, selected_targets_state, targets_box])
