@@ -190,6 +190,107 @@ def create_app(config_path: str = None):
                 pass
         return JSONResponse({"status": "ok"})
 
+    # ---- Async job system ----
+    import threading
+    jobs = {}  # job_id -> {status, progress, result_path, error}
+
+    def _run_job(job_id, func, *args, **kwargs):
+        """Run a function in a background thread, updating job status."""
+        try:
+            jobs[job_id]['status'] = 'processing'
+            result = func(*args, **kwargs)
+            jobs[job_id]['status'] = 'done'
+            jobs[job_id]['result_path'] = result
+        except Exception as e:
+            jobs[job_id]['status'] = 'failed'
+            jobs[job_id]['error'] = str(e)
+            import traceback
+            traceback.print_exc()
+
+    @api.post("/session_generate_masks_async")
+    async def session_generate_masks_async(session_id: str = Form(...)):
+        """Start mask generation in background. Returns job_id."""
+        session = sessions.get(session_id)
+        if not session:
+            return JSONResponse({"error": "Invalid session_id"}, status_code=404)
+
+        job_id = _gen_id()
+        jobs[job_id] = {'status': 'queued', 'progress': 0, 'result_path': None, 'error': None}
+
+        t = threading.Thread(
+            target=_run_job,
+            args=(job_id, pipeline.generate_masks, session['runtime'], session['output_dir']),
+            daemon=True,
+        )
+        t.start()
+        return JSONResponse({"job_id": job_id})
+
+    @api.post("/session_generate_4d_async")
+    async def session_generate_4d_async(session_id: str = Form(...)):
+        """Start 4D reconstruction in background. Returns job_id."""
+        session = sessions.get(session_id)
+        if not session:
+            return JSONResponse({"error": "Invalid session_id"}, status_code=404)
+
+        job_id = _gen_id()
+        jobs[job_id] = {'status': 'queued', 'progress': 0, 'result_path': None, 'error': None}
+
+        def run_4d():
+            import torch
+            with torch.autocast("cuda", enabled=False):
+                result_video = pipeline.generate_4d(session['runtime'], session['output_dir'])
+
+            # Zip results
+            output_dir = session['output_dir']
+            zip_path = f"{output_dir}/results.zip"
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                if os.path.exists(result_video):
+                    zf.write(result_video, "rendered_video.mp4")
+                mesh_dir = f"{output_dir}/mesh_4d_individual"
+                if os.path.isdir(mesh_dir):
+                    for dirpath, dirnames, filenames in os.walk(mesh_dir):
+                        for f in filenames:
+                            full = os.path.join(dirpath, f)
+                            arcname = os.path.join("meshes", os.path.relpath(full, mesh_dir))
+                            zf.write(full, arcname)
+            return zip_path
+
+        t = threading.Thread(target=_run_job, args=(job_id, run_4d), daemon=True)
+        t.start()
+        return JSONResponse({"job_id": job_id})
+
+    @api.get("/job/{job_id}")
+    async def get_job_status(job_id: str):
+        """Poll job status. Returns {status, progress, error}."""
+        job = jobs.get(job_id)
+        if not job:
+            return JSONResponse({"error": "Invalid job_id"}, status_code=404)
+        return JSONResponse({
+            "status": job['status'],
+            "progress": job.get('progress', 0),
+            "error": job.get('error'),
+        })
+
+    @api.get("/job/{job_id}/result")
+    async def get_job_result(job_id: str):
+        """Download job result when done."""
+        job = jobs.get(job_id)
+        if not job:
+            return JSONResponse({"error": "Invalid job_id"}, status_code=404)
+        if job['status'] != 'done':
+            return JSONResponse({"error": f"Job not done, status: {job['status']}"}, status_code=400)
+        result_path = job['result_path']
+        if not result_path or not os.path.exists(result_path):
+            return JSONResponse({"error": "Result file not found"}, status_code=500)
+
+        # Detect file type
+        if result_path.endswith('.zip'):
+            return FileResponse(result_path, media_type="application/zip", filename="results.zip")
+        elif result_path.endswith('.mp4'):
+            return FileResponse(result_path, media_type="video/mp4", filename="result.mp4")
+        else:
+            return FileResponse(result_path)
+
     # ---- One-shot endpoints (no session needed) ----
 
     @api.post("/process")

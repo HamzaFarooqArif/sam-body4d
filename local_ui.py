@@ -151,48 +151,83 @@ class RemotePipeline:
 
         return runtime
 
+    def _poll_job(self, job_id, label="Processing"):
+        """Poll a job until done. Returns result path."""
+        import requests
+        import time
+
+        print(f"[RemotePipeline] {label} started (job: {job_id})")
+        while True:
+            time.sleep(3)
+            try:
+                r = requests.get(f"{self.api_url}/job/{job_id}", timeout=15)
+                if r.status_code != 200:
+                    raise RuntimeError(f"Poll error: {r.status_code}")
+                data = r.json()
+            except requests.exceptions.RequestException:
+                print(f"[RemotePipeline] Poll failed, retrying...")
+                continue
+
+            status = data.get('status')
+            if status == 'done':
+                print(f"[RemotePipeline] {label} complete!")
+                return job_id
+            elif status == 'failed':
+                raise RuntimeError(f"{label} failed: {data.get('error')}")
+            else:
+                print(f"[RemotePipeline] {label}... ({status})")
+
+    def _download_job_result(self, job_id, output_dir, filename):
+        """Download the result of a completed job."""
+        import requests
+        r = requests.get(f"{self.api_url}/job/{job_id}/result", timeout=120)
+        if r.status_code != 200:
+            raise RuntimeError(f"Download error: {r.status_code} — {r.text}")
+        os.makedirs(output_dir, exist_ok=True)
+        out_path = os.path.join(output_dir, filename)
+        with open(out_path, 'wb') as f:
+            f.write(r.content)
+        return out_path
+
     def generate_masks(self, runtime, output_dir):
-        """Tell pod to run SAM-3 mask propagation."""
+        """Start mask generation async, poll until done, download result."""
         import requests
         if not self._session_id:
             raise RuntimeError("No session")
 
-        print(f"[RemotePipeline] Generating masks on pod...")
-        r = requests.post(f"{self.api_url}/session_generate_masks", data={
+        # Start async job
+        r = requests.post(f"{self.api_url}/session_generate_masks_async", data={
             "session_id": self._session_id,
-        }, timeout=600)
-
+        }, timeout=30)
         if r.status_code != 200:
             raise RuntimeError(f"API error: {r.status_code} — {r.text}")
 
-        os.makedirs(output_dir, exist_ok=True)
-        out_path = os.path.join(output_dir, "mask_video.mp4")
-        with open(out_path, 'wb') as f:
-            f.write(r.content)
+        job_id = r.json()["job_id"]
+        self._poll_job(job_id, "Mask generation")
 
+        out_path = self._download_job_result(job_id, output_dir, "mask_video.mp4")
         print(f"[RemotePipeline] Mask video saved to {out_path}")
         return out_path
 
     def generate_4d(self, runtime, output_dir):
-        """Tell pod to run 4D reconstruction."""
+        """Start 4D generation async, poll until done, download result."""
         import requests
         import zipfile
 
         if not self._session_id:
             raise RuntimeError("No session")
 
-        print(f"[RemotePipeline] Generating 4D on pod...")
-        r = requests.post(f"{self.api_url}/session_generate_4d", data={
+        # Start async job
+        r = requests.post(f"{self.api_url}/session_generate_4d_async", data={
             "session_id": self._session_id,
-        }, timeout=1200)
-
+        }, timeout=30)
         if r.status_code != 200:
             raise RuntimeError(f"API error: {r.status_code} — {r.text}")
 
-        os.makedirs(output_dir, exist_ok=True)
-        zip_path = os.path.join(output_dir, "results.zip")
-        with open(zip_path, 'wb') as f:
-            f.write(r.content)
+        job_id = r.json()["job_id"]
+        self._poll_job(job_id, "4D generation")
+
+        zip_path = self._download_job_result(job_id, output_dir, "results.zip")
 
         with zipfile.ZipFile(zip_path, 'r') as zf:
             zf.extractall(output_dir)
