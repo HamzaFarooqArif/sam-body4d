@@ -160,34 +160,27 @@ def build_ui(pipeline):
         label = "Upload Video (click to close)" if new_state else "Upload Video (click to open)"
         return new_state, gr.update(visible=new_state), gr.update(value=label)
 
-    def on_mask_generation(video_path, progress=gr.Progress()):
+    def on_mask_start(video_path):
         if video_path is None or runtime_holder['runtime'] is None:
             raise gr.Error("No video loaded.")
-        progress(0, desc="Starting mask generation...")
+        return "**Status:** Mask generation in progress... ⏳"
 
-        # Pass progress callback if pipeline supports it (RemotePipeline does)
-        import inspect
-        if 'progress_cb' in inspect.signature(pipeline.generate_masks).parameters:
-            result = pipeline.generate_masks(runtime_holder['runtime'], runtime_holder['output_dir'], progress_cb=progress)
-        else:
-            result = pipeline.generate_masks(runtime_holder['runtime'], runtime_holder['output_dir'])
-
-        progress(1, desc="Mask generation complete!")
-        return result
-
-    def on_4d_generation(video_path, progress=gr.Progress()):
+    def on_mask_generation(video_path):
         if video_path is None or runtime_holder['runtime'] is None:
             raise gr.Error("No video loaded.")
-        progress(0, desc="Starting 4D generation (this takes ~6 minutes)...")
+        result = pipeline.generate_masks(runtime_holder['runtime'], runtime_holder['output_dir'])
+        return result, "**Status:** Mask generation complete! ✅"
 
-        import inspect
-        if 'progress_cb' in inspect.signature(pipeline.generate_4d).parameters:
-            result = pipeline.generate_4d(runtime_holder['runtime'], runtime_holder['output_dir'], progress_cb=progress)
-        else:
-            result = pipeline.generate_4d(runtime_holder['runtime'], runtime_holder['output_dir'])
+    def on_4d_start(video_path):
+        if video_path is None or runtime_holder['runtime'] is None:
+            raise gr.Error("No video loaded.")
+        return "**Status:** 4D generation in progress (~6 min)... ⏳"
 
-        progress(1, desc="4D generation complete!")
-        return result
+    def on_4d_generation(video_path):
+        if video_path is None or runtime_holder['runtime'] is None:
+            raise gr.Error("No video loaded.")
+        result = pipeline.generate_4d(runtime_holder['runtime'], runtime_holder['output_dir'])
+        return result, "**Status:** 4D generation complete! ✅"
 
     # ---- Layout ----
 
@@ -225,6 +218,7 @@ def build_ui(pipeline):
                 add_target_btn = gr.Button("Add Target")
 
             with gr.Column(scale=1):
+                status_text = gr.Markdown("**Status:** Ready", elem_id="status-text")
                 result_display = gr.Video(label="Segmentation Result")
                 with gr.Row():
                     mask_gen_btn = gr.Button("Mask Generation")
@@ -239,7 +233,15 @@ def build_ui(pipeline):
         point_radio.change(fn=lambda v: v.lower(), inputs=[point_radio], outputs=[point_type_state])
         current_frame.select(fn=on_click, inputs=[point_type_state, video_state, frame_slider], outputs=[current_frame])
         add_target_btn.click(fn=add_target, inputs=[targets_state, selected_targets_state], outputs=[targets_state, selected_targets_state, targets_box])
-        mask_gen_btn.click(fn=on_mask_generation, inputs=[video_state], outputs=[result_display])
-        gen4d_btn.click(fn=on_4d_generation, inputs=[video_state], outputs=[fourd_display])
+        mask_gen_btn.click(
+            fn=on_mask_start, inputs=[video_state], outputs=[status_text]
+        ).then(
+            fn=on_mask_generation, inputs=[video_state], outputs=[result_display, status_text]
+        )
+        gen4d_btn.click(
+            fn=on_4d_start, inputs=[video_state], outputs=[status_text]
+        ).then(
+            fn=on_4d_generation, inputs=[video_state], outputs=[fourd_display, status_text]
+        )
 
     return demo
