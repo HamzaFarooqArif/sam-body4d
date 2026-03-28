@@ -180,23 +180,28 @@ def build_ui(pipeline):
 
         preview_path = os.path.join(ROOT, "outputs", f"preview_{_gen_id()}.mp4")
         os.makedirs(os.path.dirname(preview_path), exist_ok=True)
-        fourcc = _cv2.VideoWriter_fourcc(*'mp4v')
-        # Keep original fps so preview plays at real speed but looks choppy at low rates
-        writer = _cv2.VideoWriter(preview_path, fourcc, fps, (w, h))
 
+        # Collect frames
+        frames = []
         prev_frame = None
+        selected_set = set(selected_frames)
         for idx in range(total):
             cap.set(_cv2.CAP_PROP_POS_FRAMES, idx)
             ok, frame = cap.read()
             if not ok:
                 break
-            if idx in selected_frames:
+            if idx in selected_set:
                 prev_frame = frame
             if prev_frame is not None:
-                writer.write(prev_frame)
-
+                frames.append(prev_frame)
         cap.release()
-        writer.release()
+
+        # Write with imageio (H.264, browser-compatible)
+        import imageio.v2 as imageio
+        writer = imageio.get_writer(preview_path, fps=fps, codec='libx264', quality=8)
+        for frame in frames:
+            writer.append_data(_cv2.cvtColor(frame, _cv2.COLOR_BGR2RGB))
+        writer.close()
 
         info = f"**Preview:** {len(selected_frames)} / {total} frames (every {step}) | Original FPS: {fps:.0f}"
         return gr.update(value=preview_path, visible=True), info
