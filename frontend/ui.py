@@ -322,20 +322,17 @@ def build_ui(pipeline):
 
         # Adaptive speed estimation
         # After first real progress update, calibrate estimated total time
+        # Wait at least 5 seconds before calibrating to avoid wild estimates
         cal = runtime_holder.get('_calibration')
-        if real_pct > 0 and real_pct < 100:
+        if real_pct > 0 and real_pct < 100 and elapsed > 5:
             if cal is None:
-                # First real progress received — calibrate
-                # If we're at real_pct% after elapsed seconds,
-                # estimate total = elapsed / (real_pct/100)
-                est_total = elapsed / (real_pct / 100.0)
+                est_total = max(elapsed * 1.5, elapsed / (real_pct / 100.0))
                 runtime_holder['_calibration'] = {
                     'est_total': est_total,
                     'last_real_pct': real_pct,
                     'last_real_time': elapsed,
                 }
             elif real_pct > cal['last_real_pct']:
-                # New real progress — recalibrate
                 est_total = elapsed / (real_pct / 100.0)
                 cal['est_total'] = est_total
                 cal['last_real_pct'] = real_pct
