@@ -202,7 +202,8 @@ def build_ui(pipeline):
         runtime_holder['job_id'] = None
         runtime_holder['job_label'] = None
         runtime_holder['job_target'] = None
-        return gr.update(visible=False), gr.update(value=result, visible=True), gr.update(visible=True), gr.update(visible=True)
+        # outputs: mask_progress, result_display — only touch mask area
+        return gr.update(visible=False), gr.update(value=result, visible=True)
 
     def on_4d_generation(video_path):
         if video_path is None or runtime_holder['runtime'] is None:
@@ -224,8 +225,8 @@ def build_ui(pipeline):
         if video_path is None or runtime_holder['runtime'] is None:
             raise gr.Error("No video loaded.")
         html = _progress_html("Mask generation", 0, "0s")
-        # outputs: mask_progress, result_display, fourd_progress, fourd_display
-        return gr.update(value=html, visible=True), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+        # outputs: mask_progress, result_display — only touch mask area
+        return gr.update(value=html, visible=True), gr.update(visible=False)
 
     def on_4d_start(video_path):
         if video_path is None or runtime_holder['runtime'] is None:
@@ -333,9 +334,9 @@ def build_ui(pipeline):
         current_frame.select(fn=on_click, inputs=[point_type_state, video_state, frame_slider], outputs=[current_frame])
         add_target_btn.click(fn=add_target, inputs=[targets_state, selected_targets_state], outputs=[targets_state, selected_targets_state, targets_box])
         mask_gen_btn.click(
-            fn=on_mask_start, inputs=[video_state], outputs=[mask_progress, result_display, fourd_progress, fourd_display]
+            fn=on_mask_start, inputs=[video_state], outputs=[mask_progress, result_display]
         ).then(
-            fn=on_mask_generation, inputs=[video_state], outputs=[mask_progress, result_display, fourd_progress, fourd_display]
+            fn=on_mask_generation, inputs=[video_state], outputs=[mask_progress, result_display]
         )
         gen4d_btn.click(
             fn=on_4d_start, inputs=[video_state], outputs=[fourd_progress, fourd_display]
