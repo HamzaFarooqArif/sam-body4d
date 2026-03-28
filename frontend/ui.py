@@ -217,8 +217,8 @@ def build_ui(pipeline):
         runtime_holder['job_id'] = None
         runtime_holder['job_label'] = None
         runtime_holder['job_target'] = None
-        # outputs: fourd_progress, fourd_display, mask_progress, result_display
-        return gr.update(visible=False), gr.update(value=result, visible=True), gr.update(visible=False), gr.update(visible=True)
+        # outputs: fourd_progress, fourd_display — only touch 4D area
+        return gr.update(visible=False), gr.update(value=result, visible=True)
 
     def on_mask_start(video_path):
         if video_path is None or runtime_holder['runtime'] is None:
@@ -231,8 +231,8 @@ def build_ui(pipeline):
         if video_path is None or runtime_holder['runtime'] is None:
             raise gr.Error("No video loaded.")
         html = _progress_html("4D generation (~6 min)", 0, "0s")
-        # outputs: fourd_progress, fourd_display, mask_progress, result_display
-        return gr.update(value=html, visible=True), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+        # outputs: fourd_progress, fourd_display — only touch 4D area
+        return gr.update(value=html, visible=True), gr.update(visible=False)
 
     def poll_progress():
         """Called by Timer every 2 seconds to update progress display."""
@@ -323,9 +323,9 @@ def build_ui(pipeline):
             fn=on_mask_generation, inputs=[video_state], outputs=[mask_progress, result_display, fourd_progress, fourd_display]
         )
         gen4d_btn.click(
-            fn=on_4d_start, inputs=[video_state], outputs=[fourd_progress, fourd_display, mask_progress, result_display]
+            fn=on_4d_start, inputs=[video_state], outputs=[fourd_progress, fourd_display]
         ).then(
-            fn=on_4d_generation, inputs=[video_state], outputs=[fourd_progress, fourd_display, mask_progress, result_display]
+            fn=on_4d_generation, inputs=[video_state], outputs=[fourd_progress, fourd_display]
         )
 
     return demo
