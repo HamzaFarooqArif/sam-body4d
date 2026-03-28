@@ -28,6 +28,7 @@ class RemotePipeline:
         self.detection_resolution = [256, 512]
         self.completion_resolution = [512, 1024]
         self._session_id = None
+        self._current_job_progress = None
 
         import requests
         try:
@@ -39,6 +40,10 @@ class RemotePipeline:
         except Exception as e:
             print(f"[RemotePipeline] Warning: Cannot reach {self.api_url} — {e}")
             print("  Make sure the pod is running server.py")
+
+    def get_job_progress(self):
+        """Return current job progress percentage (0-100) or None."""
+        return self._current_job_progress
 
     def _base64_to_image(self, b64: str):
         import base64
@@ -157,6 +162,7 @@ class RemotePipeline:
         import time
 
         print(f"[RemotePipeline] {label} started (job: {job_id})")
+        self._current_job_progress = 0
         elapsed = 0
         while True:
             time.sleep(3)
@@ -177,18 +183,15 @@ class RemotePipeline:
             time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
 
             if status == 'done':
+                self._current_job_progress = 100
                 print(f"[RemotePipeline] {label} complete! ({time_str})")
-                if progress_cb:
-                    progress_cb(1.0, desc=f"{label} complete! ({time_str})")
                 return job_id
             elif status == 'failed':
+                self._current_job_progress = None
                 raise RuntimeError(f"{label} failed: {data.get('error')}")
             else:
-                frac = max(0.01, min(pct / 100.0, 0.99))
-                msg = f"{label}... {pct}% ({time_str})"
-                print(f"[RemotePipeline] {msg}")
-                if progress_cb:
-                    progress_cb(frac, desc=msg)
+                self._current_job_progress = pct
+                print(f"[RemotePipeline] {label}... {pct}% ({time_str})")
 
     def _download_job_result(self, job_id, output_dir, filename):
         """Download the result of a completed job."""
@@ -202,7 +205,7 @@ class RemotePipeline:
             f.write(r.content)
         return out_path
 
-    def generate_masks(self, runtime, output_dir, progress_cb=None):
+    def generate_masks(self, runtime, output_dir):
         """Start mask generation async, poll until done, download result."""
         import requests
         if not self._session_id:
@@ -221,7 +224,7 @@ class RemotePipeline:
         print(f"[RemotePipeline] Mask video saved to {out_path}")
         return out_path
 
-    def generate_4d(self, runtime, output_dir, progress_cb=None):
+    def generate_4d(self, runtime, output_dir):
         """Start 4D generation async, poll until done, download result."""
         import requests
         import zipfile
