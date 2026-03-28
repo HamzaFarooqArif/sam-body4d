@@ -36,10 +36,14 @@ Deploy on a RunPod GPU pod with a single command. No HuggingFace token needed â€
 3. Run:
 
 ```bash
+# master branch (original all-in-one app.py)
 curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/master/setup_runpod.sh | bash
+
+# feature branch (frontend/backend split with API)
+curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/feature/frontend-backend-split/setup_runpod.sh | GITHUB_BRANCH=feature/frontend-backend-split bash
 ```
 
-4. Open HTTP port `7860` from RunPod to access the Gradio Web UI
+4. Open HTTP port `7860` (Web UI) and `8000` (API) from RunPod
 
 The script automatically:
 - Installs system dependencies and Python 3.12
