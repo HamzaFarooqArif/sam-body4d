@@ -6,6 +6,7 @@ services:
     image: sam-body4d:latest
     ports:
       - "7860:7860"
+      - "8000:8000"
     volumes:
       - ./outputs:/app/outputs
     deploy:

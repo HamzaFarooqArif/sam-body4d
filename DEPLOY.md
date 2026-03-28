@@ -1,128 +1,118 @@
-# SAM-Body4D — Docker & RunPod Deployment Guide
+# SAM-Body4D — Deployment & Development Guide
 
-## Overview
+## Architecture
 
-This setup packages SAM-Body4D into a Docker container with:
-- All model checkpoints baked in (~15GB image)
-- Gradio web UI on port 7860
-- GPU support (CUDA 11.8)
-- No HuggingFace token needed (uses community mirrors)
+```
+Pod (server.py)                    Your PC (local_ui.py)
++---------------------------+      +---------------------------+
+| Gradio UI    :7860        |      | --mock   (free, fake data)|
+| API          :8000        |      | --api URL (real results)  |
+| Models loaded once in GPU |      | No GPU needed             |
++---------------------------+      +---------------------------+
+```
+
+## Quick Start — RunPod (Recommended)
+
+### Requirements
+- GPU: 48 GB+ VRAM (A40, A6000, RTX 6000 Ada)
+- RunPod template: `runpod/pytorch`
+- Container disk: 20 GB+
+- Volume disk: 50 GB
+- HTTP ports: `7860, 8000`
+
+### Deploy
+```bash
+curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/master/setup_runpod.sh | bash
+```
+
+This starts `server.py` which serves:
+- **Port 7860** — Gradio Web UI (for users)
+- **Port 8000** — API (for local development)
 
 ---
 
-## Option 1: Run Locally with Docker
+## Development Modes
 
-### Prerequisites
-- Docker with NVIDIA Container Toolkit (`nvidia-docker`)
-- GPU with 24GB+ VRAM (A5000, A6000, A100, RTX 4090)
+### Mode 1: Free local dev (mock)
+No pod needed. Fake data, instant results.
+```bash
+python local_ui.py --mock
+```
+
+### Mode 2: Local dev with real results
+Pod running `server.py`. Your PC talks to it.
+```bash
+python local_ui.py --api https://pod-url:8000
+```
+
+### Mode 3: Production
+Pod runs everything. Users access Gradio on port 7860.
+```bash
+# On pod (via setup_runpod.sh or manually):
+python server.py
+```
+
+### Deploying code changes
+```bash
+# On your PC:
+git push
+
+# On pod:
+cd /workspace/sam-body4d && git pull
+# Restart server.py
+```
+
+---
+
+## Docker (Alternative)
 
 ### Build & Run
-
 ```bash
-# Build the image (takes 20-40 min, downloads ~15GB of models)
 docker build -t sam-body4d .
-
-# Run
-docker run --gpus all -p 7860:7860 -v $(pwd)/outputs:/app/outputs sam-body4d
+docker run --gpus all -p 7860:7860 -p 8000:8000 -v $(pwd)/outputs:/app/outputs sam-body4d
 ```
 
 Or with docker-compose:
-
 ```bash
 docker-compose up --build
 ```
 
-Open http://localhost:7860 in your browser.
-
----
-
-## Option 2: Deploy on RunPod (GPU Pod)
-
-### Step 1: Push image to Docker Hub
-
+### Push to Docker Hub
 ```bash
-# Build
-docker build -t sam-body4d .
-
-# Tag for Docker Hub (replace YOUR_USERNAME)
 docker tag sam-body4d YOUR_USERNAME/sam-body4d:latest
-
-# Push
 docker push YOUR_USERNAME/sam-body4d:latest
 ```
 
-### Step 2: Create RunPod Template
-
-1. Go to https://www.runpod.io/console/user/templates
-2. Click **"New Template"**
-3. Fill in:
-   - **Template Name**: SAM-Body4D
-   - **Container Image**: `YOUR_USERNAME/sam-body4d:latest`
-   - **Container Disk**: 50 GB (models are baked in)
-   - **Volume Disk**: 20 GB (for outputs)
-   - **Volume Mount Path**: `/app/outputs`
-   - **Expose HTTP Ports**: `7860`
-   - **Docker Command**: (leave empty — uses default CMD)
-4. Click **Save**
-
-### Step 3: Launch GPU Pod
-
-1. Go to https://www.runpod.io/console/gpu-cloud
-2. Click **"Deploy"** on a GPU with 24GB+ VRAM:
-   - **A5000 (24GB)** — minimum, may be tight
-   - **A6000 (48GB)** — recommended
-   - **A100 (80GB)** — fastest
-3. Select your **"SAM-Body4D"** template
-4. Click **"Deploy On-Demand"** (or Spot for cheaper)
-5. Once running, click **"Connect"** → **"HTTP Service [Port 7860]"**
-
-### Step 4: Use the Web UI
-
-1. The Gradio interface will load in your browser
-2. Upload a video (MP4)
-3. The system auto-detects humans in the first frame
-4. Click through the steps to generate masks and 4D meshes
-5. Download results from the output panel
-
----
-
-## Option 3: RunPod Serverless (pay-per-request)
-
-For serverless deployment, use the `scripts/offline_app.py` script instead.
-This is more complex to set up — see RunPod serverless docs for handler setup.
-The GPU Pod approach above is simpler and recommended for most users.
+### RunPod Template (Docker)
+- Container Image: `YOUR_USERNAME/sam-body4d:latest`
+- Container Disk: 50 GB
+- Volume Disk: 20 GB
+- Expose HTTP Ports: `7860, 8000`
 
 ---
 
 ## Troubleshooting
 
-### Out of Memory
-- Reduce `batch_size` in `configs/body4d.yaml` (default: 64)
-- Use a GPU with more VRAM
-- Try shorter videos
+### Out of Memory (RAM)
+- Reduce `batch_size` in `configs/body4d.yaml`
+- Use shorter videos
+- Use a pod with more RAM
+
+### Out of VRAM
+- Use GPU with 48 GB+ VRAM
+- Disable occlusion recovery: set `completion.enable: false` in config
 
 ### Slow Startup
-- First launch loads all models into GPU memory (~2-3 min)
+- First launch loads all models (~2-3 min)
 - Subsequent requests are fast
-
-### Missing Checkpoints
-- The Dockerfile downloads all models during build
-- If a download fails, rebuild: `docker build --no-cache -t sam-body4d .`
-
-### Gradio Not Accessible
-- Ensure port 7860 is exposed in RunPod template
-- Check pod logs for startup errors
 
 ---
 
-## GPU Memory Requirements
+## Resource Usage
 
-| Component          | VRAM Usage (approx) |
-|--------------------|---------------------|
-| SAM-3              | ~4 GB               |
-| SAM-3D-Body        | ~6 GB               |
-| Diffusion-VAS      | ~8 GB               |
-| MoGe-2 + Depth     | ~3 GB               |
-| **Total peak**     | **~20-24 GB**       |
-
-A6000 (48GB) is recommended for comfortable headroom.
+| Resource | Usage |
+|----------|-------|
+| GPU VRAM | ~28 GB peak |
+| System RAM | ~25 GB |
+| Disk (checkpoints) | ~15 GB |
+| Processing time | ~6 min per video |

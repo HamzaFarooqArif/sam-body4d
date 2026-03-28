@@ -124,8 +124,11 @@ RUN python /app/docker/generate_config.py
 # ---- Create output directory ----
 RUN mkdir -p /app/outputs
 
-# ---- Expose Gradio port ----
-EXPOSE 7860
+# ---- Install server deps ----
+RUN pip install --no-cache-dir fastapi uvicorn python-multipart
+
+# ---- Expose ports (Gradio UI + API) ----
+EXPOSE 7860 8000
 
 # ---- Startup ----
 RUN chmod +x /app/docker/start.sh

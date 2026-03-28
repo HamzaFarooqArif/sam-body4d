@@ -5,7 +5,7 @@
 set -e
 
 echo "============================================"
-echo "  SAM-Body4D — Starting Gradio Web UI"
+echo "  SAM-Body4D — Starting Server"
 echo "============================================"
 echo ""
 
@@ -85,7 +85,10 @@ export PYOPENGL_PLATFORM=egl
 # ---- Add code paths ----
 export PYTHONPATH="${CODE_DIR}:${CODE_DIR}/models/sam_3d_body:${CODE_DIR}/models/diffusion_vas:${PYTHONPATH}"
 
-# ---- Launch Gradio ----
-echo "Launching Gradio on port 7860..."
+# ---- Install extra deps for server mode ----
+pip install fastapi uvicorn python-multipart --quiet 2>/dev/null || true
+
+# ---- Launch Server ----
+echo "Launching server (Gradio :7860 + API :8000)..."
 cd "${CODE_DIR}"
-exec python app.py
+exec python server.py
