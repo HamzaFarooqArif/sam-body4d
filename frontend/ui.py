@@ -163,6 +163,16 @@ def build_ui(pipeline):
         runtime_holder['runtime'] = pipeline.add_target(runtime_holder['runtime'])
         return targets, selected, gr.update(choices=targets, value=selected)
 
+    def on_framerate_change(pct):
+        rt = runtime_holder.get('runtime')
+        if rt is None:
+            return "**Frames to process:** — / — | **Estimated speedup:** 1x"
+        total = rt.get('total_frames', 0)
+        to_process = max(1, int(total * pct / 100))
+        skip = max(1, round(100 / pct))
+        speedup = f"{100 / pct:.1f}x" if pct > 0 else "—"
+        return f"**Frames to process:** {to_process} / {total} (every {skip} frame{'s' if skip > 1 else ''}) | **Estimated speedup:** {speedup}"
+
     def toggle_upload(open_state):
         new_state = not open_state
         label = "Upload Video (click to close)" if new_state else "Upload Video (click to open)"
@@ -189,7 +199,7 @@ def build_ui(pipeline):
         </div>
         """
 
-    def on_mask_generation(video_path):
+    def on_mask_generation(video_path, framerate_pct):
         if video_path is None or runtime_holder['runtime'] is None:
             raise gr.Error("No video loaded.")
         runtime_holder['job_label'] = "Mask generation"
@@ -198,16 +208,18 @@ def build_ui(pipeline):
         runtime_holder['_calibration'] = None
         runtime_holder['_last_pct'] = 0
 
+        # Store framerate setting in runtime for pipeline to use
+        runtime_holder['runtime']['frame_step'] = max(1, round(100 / framerate_pct)) if framerate_pct > 0 else 1
+
         if has_job_progress:
             runtime_holder['job_id'] = 'starting'
         result = pipeline.generate_masks(runtime_holder['runtime'], runtime_holder['output_dir'])
         runtime_holder['job_id'] = None
         runtime_holder['job_label'] = None
         runtime_holder['job_target'] = None
-        # outputs: mask_progress, result_display — only touch mask area
         return gr.update(visible=False), gr.update(value=result, visible=True)
 
-    def on_4d_generation(video_path):
+    def on_4d_generation(video_path, framerate_pct):
         if video_path is None or runtime_holder['runtime'] is None:
             raise gr.Error("No video loaded.")
         runtime_holder['job_label'] = "4D generation"
@@ -216,13 +228,14 @@ def build_ui(pipeline):
         runtime_holder['_calibration'] = None
         runtime_holder['_last_pct'] = 0
 
+        runtime_holder['runtime']['frame_step'] = max(1, round(100 / framerate_pct)) if framerate_pct > 0 else 1
+
         if has_job_progress:
             runtime_holder['job_id'] = 'starting'
         result = pipeline.generate_4d(runtime_holder['runtime'], runtime_holder['output_dir'])
         runtime_holder['job_id'] = None
         runtime_holder['job_label'] = None
         runtime_holder['job_target'] = None
-        # outputs: fourd_progress, fourd_display — only touch 4D area
         return gr.update(visible=False), gr.update(value=result, visible=True)
 
     def on_mask_start(video_path):
@@ -323,6 +336,8 @@ def build_ui(pipeline):
                 upload_panel = gr.Row(visible=False)
                 with upload_panel:
                     upload = gr.File(label="Video File", file_count="single")
+                framerate_slider = gr.Slider(minimum=10, maximum=100, value=100, step=5, label="Processing Frame Rate (%)", info="100% = all frames, 50% = every 2nd frame, 25% = every 4th frame")
+                framerate_info = gr.Markdown("**Frames to process:** — / — | **Estimated speedup:** 1x")
                 frame_slider = gr.Slider(minimum=0, maximum=0, value=0, step=1, label="Frame Index")
                 time_text = gr.Text("00:00 / 00:00", label="Time")
                 point_radio = gr.Radio(choices=["Positive", "Negative"], value="Positive", label="Point Type", interactive=True)
@@ -356,6 +371,7 @@ def build_ui(pipeline):
         toggle_upload_btn.click(fn=toggle_upload, inputs=[upload_open_state], outputs=[upload_open_state, upload_panel, toggle_upload_btn])
         upload.change(fn=on_upload, inputs=[upload], outputs=[video_state, fps_state, current_frame, frame_slider, time_text])
         examples_gallery.select(fn=on_example_select, inputs=None, outputs=[video_state, fps_state, current_frame, frame_slider, time_text])
+        framerate_slider.change(fn=on_framerate_change, inputs=[framerate_slider], outputs=[framerate_info])
         frame_slider.change(fn=update_frame, inputs=[frame_slider, video_state, fps_state], outputs=[current_frame, time_text])
         point_radio.change(fn=lambda v: v.lower(), inputs=[point_radio], outputs=[point_type_state])
         current_frame.select(fn=on_click, inputs=[point_type_state, video_state, frame_slider], outputs=[current_frame])
@@ -363,12 +379,12 @@ def build_ui(pipeline):
         mask_gen_btn.click(
             fn=on_mask_start, inputs=[video_state], outputs=[mask_progress, result_display]
         ).then(
-            fn=on_mask_generation, inputs=[video_state], outputs=[mask_progress, result_display]
+            fn=on_mask_generation, inputs=[video_state, framerate_slider], outputs=[mask_progress, result_display]
         )
         gen4d_btn.click(
             fn=on_4d_start, inputs=[video_state], outputs=[fourd_progress, fourd_display]
         ).then(
-            fn=on_4d_generation, inputs=[video_state], outputs=[fourd_progress, fourd_display]
+            fn=on_4d_generation, inputs=[video_state, framerate_slider], outputs=[fourd_progress, fourd_display]
         )
 
     return demo
