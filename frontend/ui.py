@@ -195,6 +195,8 @@ def build_ui(pipeline):
         runtime_holder['job_label'] = "Mask generation"
         runtime_holder['job_start_time'] = _time.time()
         runtime_holder['job_target'] = 'mask'
+        runtime_holder['_calibration'] = None
+        runtime_holder['_last_pct'] = 0
 
         if has_job_progress:
             runtime_holder['job_id'] = 'starting'
@@ -211,6 +213,8 @@ def build_ui(pipeline):
         runtime_holder['job_label'] = "4D generation"
         runtime_holder['job_start_time'] = _time.time()
         runtime_holder['job_target'] = '4d'
+        runtime_holder['_calibration'] = None
+        runtime_holder['_last_pct'] = 0
 
         if has_job_progress:
             runtime_holder['job_id'] = 'starting'
@@ -251,19 +255,42 @@ def build_ui(pipeline):
         if has_job_progress:
             real_pct = pipeline.get_job_progress() or 0
 
-        # Estimate progress based on time for smooth display
-        # Mask gen ~15s, 4D gen ~360s
-        target = runtime_holder.get('job_target')
-        if target == '4d':
-            est_total = 360  # ~6 minutes
+        # Adaptive speed estimation
+        # After first real progress update, calibrate estimated total time
+        cal = runtime_holder.get('_calibration')
+        if real_pct > 0 and real_pct < 100:
+            if cal is None:
+                # First real progress received — calibrate
+                # If we're at real_pct% after elapsed seconds,
+                # estimate total = elapsed / (real_pct/100)
+                est_total = elapsed / (real_pct / 100.0)
+                runtime_holder['_calibration'] = {
+                    'est_total': est_total,
+                    'last_real_pct': real_pct,
+                    'last_real_time': elapsed,
+                }
+            elif real_pct > cal['last_real_pct']:
+                # New real progress — recalibrate
+                est_total = elapsed / (real_pct / 100.0)
+                cal['est_total'] = est_total
+                cal['last_real_pct'] = real_pct
+                cal['last_real_time'] = elapsed
+
+        if cal and cal.get('est_total', 0) > 0:
+            # Interpolate smoothly based on calibrated speed
+            time_pct = min(95, int(100 * elapsed / cal['est_total']))
+            pct = max(real_pct, time_pct)
+        elif real_pct > 0:
+            pct = real_pct
         else:
-            est_total = 20  # ~20 seconds
+            # No data yet — show indeterminate
+            dots = "." * (int(elapsed) % 4 + 1)
+            return _progress_html(f"{job_label}{dots}", 0, time_str)
 
-        time_pct = min(95, int(100 * elapsed / est_total))
-
-        # Use whichever is higher — real progress or time estimate
-        # This ensures smooth progress that never goes backwards
-        pct = max(real_pct, time_pct)
+        # Never go backwards
+        prev = runtime_holder.get('_last_pct', 0)
+        pct = max(pct, prev)
+        runtime_holder['_last_pct'] = pct
 
         return _progress_html(job_label, pct, time_str)
 
