@@ -163,6 +163,44 @@ def build_ui(pipeline):
         runtime_holder['runtime'] = pipeline.add_target(runtime_holder['runtime'])
         return targets, selected, gr.update(choices=targets, value=selected)
 
+    def on_preview_fps(video_path, pct):
+        """Create a preview video using only the frames that would be processed."""
+        if video_path is None:
+            raise gr.Error("No video loaded.")
+
+        import cv2 as _cv2
+        cap = _cv2.VideoCapture(video_path)
+        total = int(cap.get(_cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(_cv2.CAP_PROP_FPS) or 30
+        w = int(cap.get(_cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(_cv2.CAP_PROP_FRAME_HEIGHT))
+
+        step = max(1, round(100 / pct)) if pct > 0 else 1
+        selected_frames = list(range(0, total, step))
+
+        preview_path = os.path.join(ROOT, "outputs", f"preview_{_gen_id()}.mp4")
+        os.makedirs(os.path.dirname(preview_path), exist_ok=True)
+        fourcc = _cv2.VideoWriter_fourcc(*'mp4v')
+        # Keep original fps so preview plays at real speed but looks choppy at low rates
+        writer = _cv2.VideoWriter(preview_path, fourcc, fps, (w, h))
+
+        prev_frame = None
+        for idx in range(total):
+            cap.set(_cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if idx in selected_frames:
+                prev_frame = frame
+            if prev_frame is not None:
+                writer.write(prev_frame)
+
+        cap.release()
+        writer.release()
+
+        info = f"**Preview:** {len(selected_frames)} / {total} frames (every {step}) | Original FPS: {fps:.0f}"
+        return gr.update(value=preview_path, visible=True), info
+
     def on_framerate_change(pct):
         rt = runtime_holder.get('runtime')
         if rt is None:
@@ -336,8 +374,11 @@ def build_ui(pipeline):
                 upload_panel = gr.Row(visible=False)
                 with upload_panel:
                     upload = gr.File(label="Video File", file_count="single")
-                framerate_slider = gr.Slider(minimum=10, maximum=100, value=100, step=5, label="Processing Frame Rate (%)", info="100% = all frames, 50% = every 2nd frame, 25% = every 4th frame")
+                with gr.Row():
+                    framerate_slider = gr.Slider(minimum=10, maximum=100, value=100, step=5, label="Processing Frame Rate (%)", info="100% = all frames, 50% = every 2nd frame", scale=3)
+                    preview_fps_btn = gr.Button("Preview", size="sm", scale=1)
                 framerate_info = gr.Markdown("**Frames to process:** — / — | **Estimated speedup:** 1x")
+                preview_video = gr.Video(label="Frame Rate Preview", visible=False)
                 frame_slider = gr.Slider(minimum=0, maximum=0, value=0, step=1, label="Frame Index")
                 time_text = gr.Text("00:00 / 00:00", label="Time")
                 point_radio = gr.Radio(choices=["Positive", "Negative"], value="Positive", label="Point Type", interactive=True)
@@ -372,6 +413,7 @@ def build_ui(pipeline):
         upload.change(fn=on_upload, inputs=[upload], outputs=[video_state, fps_state, current_frame, frame_slider, time_text])
         examples_gallery.select(fn=on_example_select, inputs=None, outputs=[video_state, fps_state, current_frame, frame_slider, time_text])
         framerate_slider.change(fn=on_framerate_change, inputs=[framerate_slider], outputs=[framerate_info])
+        preview_fps_btn.click(fn=on_preview_fps, inputs=[video_state, framerate_slider], outputs=[preview_video, framerate_info])
         frame_slider.change(fn=update_frame, inputs=[frame_slider, video_state, fps_state], outputs=[current_frame, time_text])
         point_radio.change(fn=lambda v: v.lower(), inputs=[point_radio], outputs=[point_type_state])
         current_frame.select(fn=on_click, inputs=[point_type_state, video_state, frame_slider], outputs=[current_frame])
