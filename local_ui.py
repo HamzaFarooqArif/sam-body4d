@@ -47,16 +47,7 @@ class RemotePipeline:
         return Image.open(io.BytesIO(base64.b64decode(b64)))
 
     def read_frame_at(self, path: str, idx: int):
-        # If we have a session, get frame from pod
-        if self._session_id:
-            import requests
-            r = requests.post(f"{self.api_url}/get_frame", data={
-                "session_id": self._session_id,
-                "frame_idx": idx,
-            }, timeout=30)
-            if r.status_code == 200:
-                return self._base64_to_image(r.json()["frame"])
-        # Fallback to local read
+        # Always read frames locally — no need to call the pod for this
         import cv2
         from PIL import Image
         cap = cv2.VideoCapture(path)
