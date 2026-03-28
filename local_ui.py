@@ -27,8 +27,8 @@ class RemotePipeline:
         self.batch_size = 64
         self.detection_resolution = [256, 512]
         self.completion_resolution = [512, 1024]
+        self._session_id = None
 
-        # Check connection
         import requests
         try:
             r = requests.get(f"{self.api_url}/health", timeout=10)
@@ -40,7 +40,23 @@ class RemotePipeline:
             print(f"[RemotePipeline] Warning: Cannot reach {self.api_url} — {e}")
             print("  Make sure the pod is running server.py")
 
+    def _base64_to_image(self, b64: str):
+        import base64
+        import io
+        from PIL import Image
+        return Image.open(io.BytesIO(base64.b64decode(b64)))
+
     def read_frame_at(self, path: str, idx: int):
+        # If we have a session, get frame from pod
+        if self._session_id:
+            import requests
+            r = requests.post(f"{self.api_url}/get_frame", data={
+                "session_id": self._session_id,
+                "frame_idx": idx,
+            }, timeout=30)
+            if r.status_code == 200:
+                return self._base64_to_image(r.json()["frame"])
+        # Fallback to local read
         import cv2
         from PIL import Image
         cap = cv2.VideoCapture(path)
@@ -60,11 +76,26 @@ class RemotePipeline:
         return fps, total
 
     def init_video_state(self, video_path: str):
-        fps, total = self.read_video_metadata(video_path)
+        """Upload video to pod and create a session."""
+        import requests
+        print(f"[RemotePipeline] Uploading video to pod...")
+        with open(video_path, 'rb') as f:
+            r = requests.post(
+                f"{self.api_url}/init_video",
+                files={"video": (os.path.basename(video_path), f, "video/mp4")},
+                timeout=120,
+            )
+        if r.status_code != 200:
+            raise RuntimeError(f"Failed to init video: {r.status_code} — {r.text}")
+
+        data = r.json()
+        self._session_id = data["session_id"]
+        print(f"[RemotePipeline] Session created: {self._session_id}")
+
         return {
             'inference_state': None,
-            'video_fps': fps,
-            'total_frames': total,
+            'video_fps': data["fps"],
+            'total_frames': data["total_frames"],
             'clicks': {},
             'id': 1,
             'objects': {},
@@ -74,56 +105,71 @@ class RemotePipeline:
             'detection_resolution': self.detection_resolution,
             'completion_resolution': self.completion_resolution,
             '_video_path': video_path,
+            '_width': data["width"],
+            '_height': data["height"],
         }
 
     def add_point(self, runtime, video_path, frame_idx, x, y, point_type, width, height):
-        """Local point annotation (visual only, no model call needed)."""
-        import cv2
-        import numpy as np
-        from PIL import Image
-
-        frame = self.read_frame_at(video_path, int(frame_idx))
-        if frame is None:
+        """Send click to pod, get real mask overlay back."""
+        import requests
+        if not self._session_id:
             return None, runtime
 
-        img = np.array(frame)
-        color = (0, 255, 0) if point_type.lower() == "positive" else (255, 0, 0)
-        cv2.circle(img, (int(x), int(y)), 10, color, -1)
+        r = requests.post(f"{self.api_url}/add_point", data={
+            "session_id": self._session_id,
+            "frame_idx": int(frame_idx),
+            "x": int(x),
+            "y": int(y),
+            "point_type": point_type.lower(),
+            "width": int(width),
+            "height": int(height),
+        }, timeout=30)
 
+        if r.status_code != 200:
+            print(f"[RemotePipeline] add_point error: {r.status_code} — {r.text}")
+            return None, runtime
+
+        painted = self._base64_to_image(r.json()["image"])
+
+        # Keep local state in sync
         try:
             clicks = runtime['clicks'][frame_idx]
             clicks.append((x, y, point_type))
         except KeyError:
             clicks = [(x, y, point_type)]
         runtime['clicks'][frame_idx] = clicks
-
         if runtime['id'] not in runtime['out_obj_ids']:
             runtime['out_obj_ids'].append(runtime['id'])
 
-        return Image.fromarray(img), runtime
+        return painted, runtime
 
     def add_target(self, runtime):
-        if not runtime['clicks']:
+        """Finalize target on the pod."""
+        import requests
+        if not self._session_id or not runtime['clicks']:
             return runtime
-        runtime['objects'][runtime['id']] = runtime['clicks']
-        runtime['id'] += 1
-        runtime['clicks'] = {}
+
+        r = requests.post(f"{self.api_url}/add_target", data={
+            "session_id": self._session_id,
+        }, timeout=30)
+
+        if r.status_code == 200:
+            runtime['objects'][runtime['id']] = runtime['clicks']
+            runtime['id'] = r.json().get("current_id", runtime['id'] + 1)
+            runtime['clicks'] = {}
+
         return runtime
 
     def generate_masks(self, runtime, output_dir):
-        """Send video to pod API for mask generation."""
+        """Tell pod to run SAM-3 mask propagation."""
         import requests
-        video_path = runtime.get('_video_path', '')
-        if not video_path or not os.path.exists(video_path):
-            raise RuntimeError("No video loaded")
+        if not self._session_id:
+            raise RuntimeError("No session")
 
-        print(f"[RemotePipeline] Sending video to {self.api_url}/generate_masks ...")
-        with open(video_path, 'rb') as f:
-            r = requests.post(
-                f"{self.api_url}/generate_masks",
-                files={"video": (os.path.basename(video_path), f, "video/mp4")},
-                timeout=600,
-            )
+        print(f"[RemotePipeline] Generating masks on pod...")
+        r = requests.post(f"{self.api_url}/session_generate_masks", data={
+            "session_id": self._session_id,
+        }, timeout=600)
 
         if r.status_code != 200:
             raise RuntimeError(f"API error: {r.status_code} — {r.text}")
@@ -137,29 +183,22 @@ class RemotePipeline:
         return out_path
 
     def generate_4d(self, runtime, output_dir):
-        """Send video to pod API for full processing."""
+        """Tell pod to run 4D reconstruction."""
         import requests
         import zipfile
-        import tempfile
 
-        video_path = runtime.get('_video_path', '')
-        if not video_path or not os.path.exists(video_path):
-            raise RuntimeError("No video loaded")
+        if not self._session_id:
+            raise RuntimeError("No session")
 
-        print(f"[RemotePipeline] Sending video to {self.api_url}/process ...")
-        with open(video_path, 'rb') as f:
-            r = requests.post(
-                f"{self.api_url}/process",
-                files={"video": (os.path.basename(video_path), f, "video/mp4")},
-                timeout=1200,
-            )
+        print(f"[RemotePipeline] Generating 4D on pod...")
+        r = requests.post(f"{self.api_url}/session_generate_4d", data={
+            "session_id": self._session_id,
+        }, timeout=1200)
 
         if r.status_code != 200:
             raise RuntimeError(f"API error: {r.status_code} — {r.text}")
 
         os.makedirs(output_dir, exist_ok=True)
-
-        # Save and extract zip
         zip_path = os.path.join(output_dir, "results.zip")
         with open(zip_path, 'wb') as f:
             f.write(r.content)
@@ -172,7 +211,6 @@ class RemotePipeline:
             print(f"[RemotePipeline] 4D video saved to {result_video}")
             return result_video
 
-        # Fallback: return any mp4 found
         for f in os.listdir(output_dir):
             if f.endswith('.mp4') and '4d' in f.lower():
                 return os.path.join(output_dir, f)
@@ -182,7 +220,6 @@ class RemotePipeline:
         if output_dir is None:
             output_dir = os.path.join("outputs", f"remote_{os.getpid()}")
         runtime = self.init_video_state(video_path)
-        runtime['_video_path'] = video_path
         result_video = self.generate_4d(runtime, output_dir)
         return {
             'result_video': result_video,
