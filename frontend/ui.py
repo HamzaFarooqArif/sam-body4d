@@ -210,11 +210,38 @@ def build_ui(pipeline):
         return targets, selected, gr.update(choices=targets, value=selected)
 
     def on_apply_framerate(framerate_pct):
-        """Re-process original video at the new framerate and reinit everything."""
+        """Re-process original video at the new framerate. Local only — no pod re-upload."""
         original = runtime_holder.get('original_video_path')
         if original is None:
             raise gr.Error("No video loaded. Upload a video first.")
-        return prepare_video(original, framerate_pct)
+
+        # Create reduced video locally
+        working_path, fps, total = _create_reduced_video(original, framerate_pct)
+
+        if total <= 0 or fps <= 0:
+            raise gr.Error("Invalid video after framerate change.")
+
+        first_frame = pipeline.read_frame_at(working_path, 0)
+
+        # Update local state only — keep existing pod session
+        runtime_holder['video_path'] = working_path
+        if runtime_holder.get('runtime'):
+            runtime_holder['runtime']['video_fps'] = fps
+            runtime_holder['runtime']['total_frames'] = total
+            runtime_holder['runtime']['_video_path'] = working_path
+            step = max(1, round(100 / framerate_pct)) if framerate_pct > 0 else 1
+            runtime_holder['runtime']['frame_step'] = step
+
+        slider_cfg = gr.update(minimum=0, maximum=total - 1, value=0)
+        dur = total / fps
+        total_text = f"{int(dur // 60):02d}:{int(dur % 60):02d}"
+        time_text = f"00:00 / {total_text}"
+
+        orig_fps, orig_total = pipeline.read_video_metadata(original)
+        step = max(1, round(100 / framerate_pct)) if framerate_pct > 0 else 1
+        info = f"**Frames:** {total} / {orig_total} (every {step}) | **FPS:** {fps:.1f}"
+
+        return working_path, fps, gr.update(value=first_frame, interactive=True), slider_cfg, time_text, info
 
     def on_framerate_change(pct):
         rt = runtime_holder.get('runtime')
