@@ -151,14 +151,16 @@ class RemotePipeline:
 
         return runtime
 
-    def _poll_job(self, job_id, label="Processing"):
+    def _poll_job(self, job_id, label="Processing", progress_cb=None):
         """Poll a job until done. Returns result path."""
         import requests
         import time
 
         print(f"[RemotePipeline] {label} started (job: {job_id})")
+        elapsed = 0
         while True:
             time.sleep(3)
+            elapsed += 3
             try:
                 r = requests.get(f"{self.api_url}/job/{job_id}", timeout=15)
                 if r.status_code != 200:
@@ -169,13 +171,22 @@ class RemotePipeline:
                 continue
 
             status = data.get('status')
+            mins = elapsed // 60
+            secs = elapsed % 60
+            time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+
             if status == 'done':
-                print(f"[RemotePipeline] {label} complete!")
+                print(f"[RemotePipeline] {label} complete! ({time_str})")
+                if progress_cb:
+                    progress_cb(1.0, desc=f"{label} complete! ({time_str})")
                 return job_id
             elif status == 'failed':
                 raise RuntimeError(f"{label} failed: {data.get('error')}")
             else:
-                print(f"[RemotePipeline] {label}... ({status})")
+                msg = f"{label}... {time_str} elapsed"
+                print(f"[RemotePipeline] {msg}")
+                if progress_cb:
+                    progress_cb(None, desc=msg)
 
     def _download_job_result(self, job_id, output_dir, filename):
         """Download the result of a completed job."""
@@ -189,13 +200,12 @@ class RemotePipeline:
             f.write(r.content)
         return out_path
 
-    def generate_masks(self, runtime, output_dir):
+    def generate_masks(self, runtime, output_dir, progress_cb=None):
         """Start mask generation async, poll until done, download result."""
         import requests
         if not self._session_id:
             raise RuntimeError("No session")
 
-        # Start async job
         r = requests.post(f"{self.api_url}/session_generate_masks_async", data={
             "session_id": self._session_id,
         }, timeout=30)
@@ -203,13 +213,13 @@ class RemotePipeline:
             raise RuntimeError(f"API error: {r.status_code} — {r.text}")
 
         job_id = r.json()["job_id"]
-        self._poll_job(job_id, "Mask generation")
+        self._poll_job(job_id, "Mask generation", progress_cb)
 
         out_path = self._download_job_result(job_id, output_dir, "mask_video.mp4")
         print(f"[RemotePipeline] Mask video saved to {out_path}")
         return out_path
 
-    def generate_4d(self, runtime, output_dir):
+    def generate_4d(self, runtime, output_dir, progress_cb=None):
         """Start 4D generation async, poll until done, download result."""
         import requests
         import zipfile
@@ -217,7 +227,6 @@ class RemotePipeline:
         if not self._session_id:
             raise RuntimeError("No session")
 
-        # Start async job
         r = requests.post(f"{self.api_url}/session_generate_4d_async", data={
             "session_id": self._session_id,
         }, timeout=30)
@@ -225,7 +234,7 @@ class RemotePipeline:
             raise RuntimeError(f"API error: {r.status_code} — {r.text}")
 
         job_id = r.json()["job_id"]
-        self._poll_job(job_id, "4D generation")
+        self._poll_job(job_id, "4D generation", progress_cb)
 
         zip_path = self._download_job_result(job_id, output_dir, "results.zip")
 
