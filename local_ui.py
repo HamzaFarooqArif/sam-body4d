@@ -171,6 +171,7 @@ class RemotePipeline:
                 continue
 
             status = data.get('status')
+            pct = data.get('progress', 0) or 0
             mins = elapsed // 60
             secs = elapsed % 60
             time_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
@@ -183,10 +184,11 @@ class RemotePipeline:
             elif status == 'failed':
                 raise RuntimeError(f"{label} failed: {data.get('error')}")
             else:
-                msg = f"{label}... {time_str} elapsed"
+                frac = max(0.01, min(pct / 100.0, 0.99))
+                msg = f"{label}... {pct}% ({time_str})"
                 print(f"[RemotePipeline] {msg}")
                 if progress_cb:
-                    progress_cb(None, desc=msg)
+                    progress_cb(frac, desc=msg)
 
     def _download_job_result(self, job_id, output_dir, filename):
         """Download the result of a completed job."""

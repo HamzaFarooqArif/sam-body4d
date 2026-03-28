@@ -224,8 +224,10 @@ def create_app(config_path: str = None):
 
         import torch
         def run_masks():
+            def update_progress(p):
+                jobs[job_id]['progress'] = round(p * 100)
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                return pipeline.generate_masks(session['runtime'], session['output_dir'])
+                return pipeline.generate_masks(session['runtime'], session['output_dir'], progress_cb=update_progress)
 
         t = threading.Thread(target=_run_job, args=(job_id, run_masks), daemon=True)
         t.start()
@@ -243,8 +245,10 @@ def create_app(config_path: str = None):
 
         def run_4d():
             import torch
+            def update_progress(p):
+                jobs[job_id]['progress'] = round(p * 100)
             with torch.autocast("cuda", enabled=False):
-                result_video = pipeline.generate_4d(session['runtime'], session['output_dir'])
+                result_video = pipeline.generate_4d(session['runtime'], session['output_dir'], progress_cb=update_progress)
 
             # Zip results
             output_dir = session['output_dir']

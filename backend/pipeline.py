@@ -249,7 +249,7 @@ class Pipeline:
         runtime['clicks'] = {}
         return runtime
 
-    def generate_masks(self, runtime, output_dir):
+    def generate_masks(self, runtime, output_dir, progress_cb=None):
         """Run SAM-3 propagation across all frames. Save masks and images."""
         os.makedirs(os.path.join(output_dir, 'images'), exist_ok=True)
         os.makedirs(os.path.join(output_dir, 'masks'), exist_ok=True)
@@ -274,7 +274,10 @@ class Pipeline:
         IMAGE_PATH = os.path.join(output_dir, 'images')
         MASKS_PATH = os.path.join(output_dir, 'masks')
 
-        for out_frame_idx in range(len(video_segments)):
+        total_frames = len(video_segments)
+        for out_frame_idx in range(total_frames):
+            if progress_cb:
+                progress_cb(out_frame_idx / total_frames)
             img = runtime['inference_state']['images'][out_frame_idx].detach().float().cpu()
             img = (img + 1) / 2
             img = img.clamp(0, 1)
@@ -471,7 +474,7 @@ class Pipeline:
 
         return iou_dict_obj_id, occ_dict_obj_id, final_pred_amodal_masks_com
 
-    def generate_4d(self, runtime, output_dir):
+    def generate_4d(self, runtime, output_dir, progress_cb=None):
         """Run occlusion recovery + 3D mesh recovery. Returns path to rendered video."""
         IMAGE_PATH = os.path.join(output_dir, 'images')
         MASKS_PATH = os.path.join(output_dir, 'masks')
@@ -510,7 +513,12 @@ class Pipeline:
         input_image = np.array(Image.open(images_list[0])).astype('uint8')
         cam_int = self.sam3_3d_body_model.fov_estimator.get_cam_intrinsics(input_image)
 
+        total_batches = max(1, (n + batch_size - 1) // batch_size)
+        batch_idx = 0
         for i in tqdm(range(0, n, batch_size)):
+            if progress_cb:
+                progress_cb(batch_idx / total_batches)
+            batch_idx += 1
             batch_images = images_list[i:i + batch_size]
             batch_masks = masks_list[i:i + batch_size]
             W, H = Image.open(batch_masks[0]).size
