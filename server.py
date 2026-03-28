@@ -146,10 +146,12 @@ def create_app(config_path: str = None):
     @api.post("/session_generate_masks")
     async def session_generate_masks(session_id: str = Form(...)):
         """Run SAM-3 mask propagation for the session."""
+        import torch
         session = sessions.get(session_id)
         if not session:
             return JSONResponse({"error": "Invalid session_id"}, status_code=404)
-        mask_video = pipeline.generate_masks(session['runtime'], session['output_dir'])
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            mask_video = pipeline.generate_masks(session['runtime'], session['output_dir'])
         return FileResponse(mask_video, media_type="video/mp4", filename="mask_video.mp4")
 
     @api.post("/session_generate_4d")
@@ -196,9 +198,12 @@ def create_app(config_path: str = None):
 
     def _run_job(job_id, func, *args, **kwargs):
         """Run a function in a background thread, updating job status."""
+        import torch
         try:
             jobs[job_id]['status'] = 'processing'
-            result = func(*args, **kwargs)
+            # Ensure CUDA autocast context is available in this thread
+            with torch.cuda.device(0):
+                result = func(*args, **kwargs)
             jobs[job_id]['status'] = 'done'
             jobs[job_id]['result_path'] = result
         except Exception as e:
@@ -217,11 +222,12 @@ def create_app(config_path: str = None):
         job_id = _gen_id()
         jobs[job_id] = {'status': 'queued', 'progress': 0, 'result_path': None, 'error': None}
 
-        t = threading.Thread(
-            target=_run_job,
-            args=(job_id, pipeline.generate_masks, session['runtime'], session['output_dir']),
-            daemon=True,
-        )
+        import torch
+        def run_masks():
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                return pipeline.generate_masks(session['runtime'], session['output_dir'])
+
+        t = threading.Thread(target=_run_job, args=(job_id, run_masks), daemon=True)
         t.start()
         return JSONResponse({"job_id": job_id})
 
