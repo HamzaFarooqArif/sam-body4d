@@ -69,31 +69,71 @@ def build_ui(pipeline):
 
     # ---- Handlers ----
 
-    def prepare_video(path):
+    def _create_reduced_video(original_path, framerate_pct):
+        """Create a new video with sampled frames based on framerate percentage."""
+        import cv2 as _cv2
+        import imageio.v2 as imageio
+
+        cap = _cv2.VideoCapture(original_path)
+        total = int(cap.get(_cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(_cv2.CAP_PROP_FPS) or 30
+
+        step = max(1, round(100 / framerate_pct)) if framerate_pct > 0 else 1
+
+        if step == 1:
+            cap.release()
+            return original_path, fps, total
+
+        reduced_path = os.path.join(ROOT, "outputs", f"reduced_{_gen_id()}.mp4")
+        os.makedirs(os.path.dirname(reduced_path), exist_ok=True)
+
+        # Adjust fps proportionally so video duration stays the same
+        reduced_fps = fps / step
+        writer = imageio.get_writer(reduced_path, fps=reduced_fps, codec='libx264', quality=8)
+
+        frame_count = 0
+        for idx in range(0, total, step):
+            cap.set(_cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+            if not ok:
+                break
+            writer.append_data(_cv2.cvtColor(frame, _cv2.COLOR_BGR2RGB))
+            frame_count += 1
+
+        cap.release()
+        writer.close()
+        return reduced_path, reduced_fps, frame_count
+
+    def prepare_video(path, framerate_pct=100):
         if path is None:
-            return None, 1.0, None, gr.update(minimum=0, maximum=0, value=0), "00:00 / 00:00"
+            return None, 1.0, None, gr.update(minimum=0, maximum=0, value=0), "00:00 / 00:00", ""
         if not os.path.exists(path):
             raise gr.Error(f"Video not found: {path}")
         ext = os.path.splitext(path)[1].lower()
         if ext not in SUPPORTED_EXTS:
             raise gr.Error(f"Unsupported format {ext}. Supported: {', '.join(sorted(SUPPORTED_EXTS))}")
 
-        fps, total = pipeline.read_video_metadata(path)
-        if fps <= 0 or total <= 0:
+        # Store original path
+        runtime_holder['original_video_path'] = path
+
+        # Create reduced video if needed
+        working_path, fps, total = _create_reduced_video(path, framerate_pct)
+
+        if total <= 0 or fps <= 0:
             raise gr.Error("Invalid video metadata.")
 
-        first_frame = pipeline.read_frame_at(path, 0)
+        first_frame = pipeline.read_frame_at(working_path, 0)
         if first_frame is None:
             raise gr.Error("Failed to read first frame.")
 
-        runtime = pipeline.init_video_state(path)
+        runtime = pipeline.init_video_state(working_path)
         runtime['video_fps'] = fps
         output_dir = os.path.join(ROOT, "outputs", _gen_id())
         os.makedirs(output_dir, exist_ok=True)
 
         runtime_holder['runtime'] = runtime
         runtime_holder['output_dir'] = output_dir
-        runtime_holder['video_path'] = path
+        runtime_holder['video_path'] = working_path
         runtime_holder['job_id'] = None
 
         slider_cfg = gr.update(minimum=0, maximum=total - 1, value=0)
@@ -101,25 +141,30 @@ def build_ui(pipeline):
         total_text = f"{int(dur // 60):02d}:{int(dur % 60):02d}"
         time_text = f"00:00 / {total_text}"
 
-        return path, fps, first_frame, slider_cfg, time_text
+        # Info text
+        orig_fps, orig_total = pipeline.read_video_metadata(path)
+        step = max(1, round(100 / framerate_pct)) if framerate_pct > 0 else 1
+        info = f"**Frames:** {total} / {orig_total} (every {step}) | **FPS:** {fps:.1f}"
 
-    def on_upload(file_obj):
+        return working_path, fps, first_frame, slider_cfg, time_text, info
+
+    def on_upload(file_obj, framerate_pct):
         if file_obj is None:
             return prepare_video(None)
-        return prepare_video(file_obj.name)
+        return prepare_video(file_obj.name, framerate_pct)
 
-    def on_example_select(evt: gr.SelectData):
+    def on_example_select(evt: gr.SelectData, framerate_pct):
         idx = evt.index
         if isinstance(idx, (list, tuple)):
             idx = idx[0]
         paths = [EXAMPLE_1, EXAMPLE_2, EXAMPLE_3]
         if idx >= len(paths):
             raise gr.Error("Unknown example index.")
-        return prepare_video(paths[idx])
+        return prepare_video(paths[idx], framerate_pct)
 
     def update_frame(idx, path, fps):
         if path is None:
-            return gr.update(value=None, visible=True), gr.update(visible=False), "00:00 / 00:00"
+            return None, "00:00 / 00:00"
         idx = int(idx)
         frame = pipeline.read_frame_at(path, idx)
         if frame is None:
@@ -132,7 +177,7 @@ def build_ui(pipeline):
         cap.release()
         dur = total / fps if fps > 0 else 0.0
         end_text = f"{int(dur // 60):02d}:{int(dur % 60):02d}"
-        return gr.update(value=frame, visible=True), gr.update(visible=False), f"{cur_text} / {end_text}"
+        return frame, f"{cur_text} / {end_text}"
 
     def on_click(evt: gr.SelectData, point_type, video_path, frame_idx):
         if video_path is None or runtime_holder['runtime'] is None:
@@ -163,48 +208,12 @@ def build_ui(pipeline):
         runtime_holder['runtime'] = pipeline.add_target(runtime_holder['runtime'])
         return targets, selected, gr.update(choices=targets, value=selected)
 
-    def on_preview_fps(video_path, pct):
-        """Create a preview video using only the frames that would be processed."""
-        if video_path is None:
-            raise gr.Error("No video loaded.")
-
-        import cv2 as _cv2
-        cap = _cv2.VideoCapture(video_path)
-        total = int(cap.get(_cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(_cv2.CAP_PROP_FPS) or 30
-        w = int(cap.get(_cv2.CAP_PROP_FRAME_WIDTH))
-        h = int(cap.get(_cv2.CAP_PROP_FRAME_HEIGHT))
-
-        step = max(1, round(100 / pct)) if pct > 0 else 1
-        selected_frames = list(range(0, total, step))
-
-        preview_path = os.path.join(ROOT, "outputs", f"preview_{_gen_id()}.mp4")
-        os.makedirs(os.path.dirname(preview_path), exist_ok=True)
-
-        # Collect frames
-        frames = []
-        prev_frame = None
-        selected_set = set(selected_frames)
-        for idx in range(total):
-            cap.set(_cv2.CAP_PROP_POS_FRAMES, idx)
-            ok, frame = cap.read()
-            if not ok:
-                break
-            if idx in selected_set:
-                prev_frame = frame
-            if prev_frame is not None:
-                frames.append(prev_frame)
-        cap.release()
-
-        # Write with imageio (H.264, browser-compatible)
-        import imageio.v2 as imageio
-        writer = imageio.get_writer(preview_path, fps=fps, codec='libx264', quality=8)
-        for frame in frames:
-            writer.append_data(_cv2.cvtColor(frame, _cv2.COLOR_BGR2RGB))
-        writer.close()
-
-        info = f"**Preview:** {len(selected_frames)} / {total} frames (every {step}) | Original FPS: {fps:.0f}"
-        return gr.update(visible=False), gr.update(value=preview_path, visible=True), info
+    def on_apply_framerate(framerate_pct):
+        """Re-process original video at the new framerate and reinit everything."""
+        original = runtime_holder.get('original_video_path')
+        if original is None:
+            raise gr.Error("No video loaded. Upload a video first.")
+        return prepare_video(original, framerate_pct)
 
     def on_framerate_change(pct):
         rt = runtime_holder.get('runtime')
@@ -375,14 +384,13 @@ def build_ui(pipeline):
                     label="Current Frame (click to annotate)",
                     interactive=True, sources=[],
                 )
-                preview_video = gr.Video(label="Frame Rate Preview (click frame to go back to annotation)", visible=False)
                 toggle_upload_btn = gr.Button("Upload Video (click to open)", size="sm", variant="secondary")
                 upload_panel = gr.Row(visible=False)
                 with upload_panel:
                     upload = gr.File(label="Video File", file_count="single")
                 with gr.Row():
                     framerate_slider = gr.Slider(minimum=10, maximum=100, value=100, step=5, label="Processing Frame Rate (%)", info="100% = all frames, 50% = every 2nd frame", scale=3)
-                    preview_fps_btn = gr.Button("Preview", size="sm", scale=1)
+                    apply_fps_btn = gr.Button("Apply", size="sm", scale=1)
                 framerate_info = gr.Markdown("**Frames to process:** — / — | **Estimated speedup:** 1x")
                 frame_slider = gr.Slider(minimum=0, maximum=0, value=0, step=1, label="Frame Index")
                 time_text = gr.Text("00:00 / 00:00", label="Time")
@@ -415,11 +423,11 @@ def build_ui(pipeline):
 
         # ---- Event bindings ----
         toggle_upload_btn.click(fn=toggle_upload, inputs=[upload_open_state], outputs=[upload_open_state, upload_panel, toggle_upload_btn])
-        upload.change(fn=on_upload, inputs=[upload], outputs=[video_state, fps_state, current_frame, frame_slider, time_text])
-        examples_gallery.select(fn=on_example_select, inputs=None, outputs=[video_state, fps_state, current_frame, frame_slider, time_text])
+        upload.change(fn=on_upload, inputs=[upload, framerate_slider], outputs=[video_state, fps_state, current_frame, frame_slider, time_text, framerate_info])
+        examples_gallery.select(fn=on_example_select, inputs=[framerate_slider], outputs=[video_state, fps_state, current_frame, frame_slider, time_text, framerate_info])
         framerate_slider.change(fn=on_framerate_change, inputs=[framerate_slider], outputs=[framerate_info])
-        preview_fps_btn.click(fn=on_preview_fps, inputs=[video_state, framerate_slider], outputs=[current_frame, preview_video, framerate_info])
-        frame_slider.change(fn=update_frame, inputs=[frame_slider, video_state, fps_state], outputs=[current_frame, preview_video, time_text])
+        apply_fps_btn.click(fn=on_apply_framerate, inputs=[framerate_slider], outputs=[video_state, fps_state, current_frame, frame_slider, time_text, framerate_info])
+        frame_slider.change(fn=update_frame, inputs=[frame_slider, video_state, fps_state], outputs=[current_frame, time_text])
         point_radio.change(fn=lambda v: v.lower(), inputs=[point_radio], outputs=[point_type_state])
         current_frame.select(fn=on_click, inputs=[point_type_state, video_state, frame_slider], outputs=[current_frame])
         add_target_btn.click(fn=add_target, inputs=[targets_state, selected_targets_state], outputs=[targets_state, selected_targets_state, targets_box])
