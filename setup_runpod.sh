@@ -160,15 +160,19 @@ export CKPT_ROOT="${CKPT}"
 export CODE_DIR="${REPO}"
 python "${REPO}/docker/generate_config.py"
 
-# ---- Step 6: Launch ----
-echo "[6/6] Launching Gradio on port 7860..."
+# ---- Step 6: Install extra deps for server mode ----
+pip install fastapi uvicorn python-multipart -q 2>/dev/null
+
+# ---- Step 7: Launch ----
+echo "[6/6] Launching server..."
 echo ""
 echo "============================================"
-echo "  Setup complete! App starting..."
-echo "  Open HTTP port 7860 in RunPod to access"
+echo "  Setup complete! Server starting..."
+echo "  Gradio UI:  port 7860"
+echo "  API:        port 8000"
 echo "============================================"
 echo ""
 
 export PYOPENGL_PLATFORM=egl
 cd "${REPO}"
-exec python app.py
+exec python server.py
