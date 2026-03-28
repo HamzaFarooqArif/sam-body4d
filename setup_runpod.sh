@@ -81,12 +81,16 @@ else
 fi
 
 # Clone or update repo
+GITHUB_BRANCH="${GITHUB_BRANCH:-master}"
 if [ -d "${REPO}/.git" ]; then
-    cd "${REPO}" && git pull -q
-    echo "  (repo updated)"
+    cd "${REPO}"
+    git fetch origin "${GITHUB_BRANCH}" --depth 1 -q
+    git checkout "${GITHUB_BRANCH}" -q 2>/dev/null || git checkout -b "${GITHUB_BRANCH}" "origin/${GITHUB_BRANCH}" -q
+    git reset --hard "origin/${GITHUB_BRANCH}" -q
+    echo "  (repo updated, branch: ${GITHUB_BRANCH})"
 else
-    git clone --depth 1 https://github.com/HamzaFarooqArif/sam-body4d.git "${REPO}"
-    echo "  (repo cloned)"
+    git clone --depth 1 --branch "${GITHUB_BRANCH}" https://github.com/HamzaFarooqArif/sam-body4d.git "${REPO}"
+    echo "  (repo cloned, branch: ${GITHUB_BRANCH})"
 fi
 
 cd "${REPO}"
