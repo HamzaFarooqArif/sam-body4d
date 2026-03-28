@@ -377,8 +377,10 @@ def build_ui(pipeline):
                     ],
                     show_label=False, columns=3, height=160,
                 )
+                _placeholder = os.path.join(ROOT, "assets", "placeholder.png")
                 current_frame = gr.Image(
                     label="Current Frame (click to annotate)",
+                    value=_placeholder if os.path.exists(_placeholder) else None,
                     interactive=True, sources=[],
                 )
                 toggle_upload_btn = gr.Button("Upload Video (click to open)", size="sm", variant="secondary")
