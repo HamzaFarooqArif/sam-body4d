@@ -106,8 +106,7 @@ def build_ui(pipeline):
 
     def prepare_video(path, framerate_pct=100):
         if path is None:
-            _ph = os.path.join(ROOT, "assets", "placeholder.png")
-            return None, 1.0, gr.update(value=_ph if os.path.exists(_ph) else None, interactive=False), gr.update(minimum=0, maximum=0, value=0), "00:00 / 00:00", ""
+            return None, 1.0, None, gr.update(minimum=0, maximum=0, value=0), "00:00 / 00:00", ""
         if not os.path.exists(path):
             raise gr.Error(f"Video not found: {path}")
         ext = os.path.splitext(path)[1].lower()
@@ -147,7 +146,7 @@ def build_ui(pipeline):
         step = max(1, round(100 / framerate_pct)) if framerate_pct > 0 else 1
         info = f"**Frames:** {total} / {orig_total} (every {step}) | **FPS:** {fps:.1f}"
 
-        return working_path, fps, gr.update(value=first_frame, interactive=True), slider_cfg, time_text, info
+        return working_path, fps, first_frame, slider_cfg, time_text, info
 
     def on_upload(video_path, framerate_pct):
         if video_path is None:
@@ -241,7 +240,7 @@ def build_ui(pipeline):
         step = max(1, round(100 / framerate_pct)) if framerate_pct > 0 else 1
         info = f"**Frames:** {total} / {orig_total} (every {step}) | **FPS:** {fps:.1f}"
 
-        return working_path, fps, gr.update(value=first_frame, interactive=True), slider_cfg, time_text, info
+        return working_path, fps, first_frame, slider_cfg, time_text, info
 
     def on_framerate_change(pct):
         rt = runtime_holder.get('runtime')
@@ -405,11 +404,9 @@ def build_ui(pipeline):
                     ],
                     show_label=False, columns=3, height=160,
                 )
-                _placeholder = os.path.join(ROOT, "assets", "placeholder.png")
                 current_frame = gr.Image(
                     label="Current Frame (click to annotate)",
-                    value=_placeholder if os.path.exists(_placeholder) else None,
-                    interactive=False, sources=[],
+                    interactive=True, sources=[],
                 )
                 toggle_upload_btn = gr.Button("Upload Video (click to open)", size="sm", variant="secondary")
                 upload_panel = gr.Row(visible=False)
