@@ -27,7 +27,7 @@ Deploy on a RunPod GPU pod with a single command. No HuggingFace token needed �
 - **RunPod template**: `runpod/pytorch` (any version)
 - **Container disk**: 20 GB+
 - **Volume disk**: 50 GB (mounted at `/workspace`)
-- **HTTP port**: `7860`
+- **HTTP ports**: `7860, 8000`
 
 ### Deploy
 
@@ -41,49 +41,89 @@ curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/master/set
 
 4. Open HTTP port `7860` from RunPod to access the Gradio Web UI
 
-That's it. The script automatically:
+The script automatically:
 - Installs system dependencies and Python 3.12
 - Detects your CUDA version and installs matching PyTorch
 - Clones this repo and installs all dependencies
-- Downloads all model checkpoints (~15 GB):
-  - SAM-3 (from `jetjodh/sam3`)
-  - SAM-3D-Body (from `jetjodh/sam-3d-body-dinov3`)
-  - MoGe-2 (from `Ruicheng/moge-2-vitl-normal`)
-  - Diffusion-VAS (from `kaihuac/diffusion-vas-*`)
-  - Depth Anything V2
-- Generates config and launches Gradio on port 7860
+- Downloads all model checkpoints (~15 GB) from community mirrors (no HuggingFace token needed)
+- Starts `server.py` which serves Gradio UI on `:7860` and API on `:8000`
 
 ### Re-running after pod restart
 
-If your volume disk still has the checkpoints from a previous run, the script skips downloads and just launches — takes under 2 minutes.
+If your volume disk still has checkpoints from a previous run, the script skips downloads and launches in under 2 minutes.
 
 ```bash
 curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/master/setup_runpod.sh | bash
 ```
 
 
-## Updating Code
+## Architecture
 
-To customize the app, edit code locally and push to this repo:
+The project is split into frontend and backend for flexible development:
 
-```bash
-git clone https://github.com/HamzaFarooqArif/sam-body4d.git
-cd sam-body4d
-# make your changes...
-git add . && git commit -m "your changes" && git push
+```
+server.py (pod entry point)
+├── backend/pipeline.py    — model loading + processing (GPU)
+├── frontend/ui.py         — Gradio UI (no model imports)
+├── Gradio UI on :7860     — for users
+└── FastAPI on :8000       — for local development
 ```
 
-On the pod, pull the latest and restart:
+### Entry Points
 
+| File | Where | What it does |
+|------|-------|-------------|
+| `server.py` | Pod | Loads models once, serves UI (:7860) + API (:8000) |
+| `local_ui.py --mock` | Your PC | Free dev with fake data, no GPU needed |
+| `local_ui.py --api URL` | Your PC | Local UI talking to pod API for real results |
+| `app.py` | Anywhere | Original all-in-one (unchanged, still works) |
+
+
+## Development
+
+### Mode 1: Free local dev (no pod, no cost)
 ```bash
+python local_ui.py --mock
+```
+Runs the full UI with fake model outputs. Use this to iterate on UI changes, video preprocessing, output formatting, etc.
+
+### Mode 2: Local dev with real results (pod running)
+```bash
+python local_ui.py --api https://pod-url:8000
+```
+Your local UI sends videos to the pod's API and gets real 3D results back.
+
+### Mode 3: Production (pod serves everything)
+Pod runs `server.py` via the setup script. Users access Gradio on `:7860`. You can simultaneously develop against `:8000`.
+
+### Deploying code changes
+```bash
+# On your PC — push changes
+git push
+
+# On pod — pull and restart
 cd /workspace/sam-body4d && git pull
-# restart the app
+# restart server.py
 ```
 
 No need to re-download models or reinstall dependencies.
 
 
-## Local Installation
+## Docker (Alternative)
+
+### Build & Run
+```bash
+docker build -t sam-body4d .
+docker run --gpus all -p 7860:7860 -p 8000:8000 -v $(pwd)/outputs:/app/outputs sam-body4d
+```
+
+Or with docker-compose:
+```bash
+docker-compose up --build
+```
+
+
+## Local Installation (without Docker or RunPod)
 
 #### 1. Create and Activate Environment
 ```bash
@@ -102,6 +142,7 @@ Choose the PyTorch CUDA version matching your system: https://pytorch.org/get-st
 #### 3. Install Dependencies
 ```bash
 pip install -e .
+pip install fastapi uvicorn python-multipart
 ```
 
 #### 4. Download Checkpoints
@@ -130,6 +171,10 @@ checkpoints/
 
 #### 5. Run
 ```bash
+# Full server (Gradio + API)
+python server.py
+
+# Or original all-in-one
 python app.py
 ```
 
