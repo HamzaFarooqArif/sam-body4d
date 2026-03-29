@@ -264,13 +264,23 @@ def create_app(config_path: str = None):
 
     @api.post("/delete_session")
     async def delete_session(session_id: str = Form(...)):
-        """Clean up a session."""
+        """Clean up a session and free GPU memory."""
+        import torch
+        import gc
         session = sessions.pop(session_id, None)
-        if session and os.path.exists(session.get('video_path', '')):
-            try:
-                os.unlink(session['video_path'])
-            except OSError:
-                pass
+        if session:
+            # Delete video file
+            if os.path.exists(session.get('video_path', '')):
+                try:
+                    os.unlink(session['video_path'])
+                except OSError:
+                    pass
+            # Clear runtime references to free GPU tensors
+            session.get('runtime', {}).clear()
+            session.clear()
+        # Force garbage collection and free GPU cache
+        gc.collect()
+        torch.cuda.empty_cache()
         return JSONResponse({"status": "ok"})
 
     # ---- Async job system ----

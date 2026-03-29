@@ -100,6 +100,12 @@ export class App implements OnInit {
   }
 
   onFileSelected(file: File) {
+    // Delete old session to free GPU memory
+    const oldSid = this.session.sessionId();
+    if (oldSid) {
+      this.api.deleteSession(oldSid).subscribe();
+    }
+
     this.uploading.set(true);
     this.session.reset();
     this.maskVideoUrl.set(null);
@@ -200,6 +206,43 @@ export class App implements OnInit {
 
   onMarkerRemove(_markerIdx: number) {
     this.snackBar.open('Point removal not supported. Upload video again to start over.', '', { duration: 3000 });
+  }
+
+  resetting = signal(false);
+
+  onResetTargets() {
+    const file = this.currentVideoFile;
+    if (!file || this.resetting()) return;
+
+    this.resetting.set(true);
+
+    // Delete old session to free GPU memory
+    const oldSid = this.session.sessionId();
+    if (oldSid) {
+      this.api.deleteSession(oldSid).subscribe();
+    }
+
+    this.pointMarkers.set([]);
+    this.session.targets.set([]);
+    this.session.currentTargetId.set(1);
+    this.session.annotationFrameIdx.set(null);
+    this.maskVideoUrl.set(null);
+    this.fourDVideoUrl.set(null);
+
+    // Re-init session on pod with same video
+    this.api.initVideo(file).subscribe({
+      next: async (res) => {
+        this.session.sessionId.set(res.session_id);
+        this.currentFrameSrc.set('data:image/png;base64,' + res.first_frame);
+        this.session.currentFrameIdx.set(0);
+        this.resetting.set(false);
+        this.snackBar.open('Reset complete', '', { duration: 1500 });
+      },
+      error: () => {
+        this.resetting.set(false);
+        this.snackBar.open('Reset failed', '', { duration: 3000 });
+      },
+    });
   }
 
   onAddTarget() {

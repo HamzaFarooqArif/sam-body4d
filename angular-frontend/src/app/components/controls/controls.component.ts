@@ -6,11 +6,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 @Component({
   selector: 'app-controls',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatSliderModule, MatButtonModule, MatButtonToggleModule, MatChipsModule, MatIconModule],
+  imports: [CommonModule, FormsModule, MatSliderModule, MatButtonModule, MatButtonToggleModule, MatChipsModule, MatIconModule, MatProgressSpinnerModule],
   template: `
     <div class="controls">
       <!-- Frame Rate -->
@@ -36,17 +37,27 @@ import { MatIconModule } from '@angular/material/icon';
         <span class="info-text">{{ timeText }}</span>
       </div>
 
-      <!-- Point Type -->
+      <!-- Point Type + Reset -->
       <div class="control-group">
         <label>Annotation Point Type</label>
-        <mat-button-toggle-group [value]="pointType" (change)="pointTypeChange.emit($event.value)">
-          <mat-button-toggle value="positive">
-            <mat-icon>add_circle</mat-icon> Positive
-          </mat-button-toggle>
-          <mat-button-toggle value="negative">
-            <mat-icon>remove_circle</mat-icon> Negative
-          </mat-button-toggle>
-        </mat-button-toggle-group>
+        <div class="point-type-row">
+          <mat-button-toggle-group [value]="pointType" (change)="pointTypeChange.emit($event.value)">
+            <mat-button-toggle value="positive">
+              <mat-icon>add_circle</mat-icon> Positive
+            </mat-button-toggle>
+            <mat-button-toggle value="negative">
+              <mat-icon>remove_circle</mat-icon> Negative
+            </mat-button-toggle>
+          </mat-button-toggle-group>
+          <button mat-stroked-button color="warn" (click)="resetTargets.emit()" [disabled]="!hasSession || resetting" class="reset-btn">
+            @if (resetting) {
+              <mat-spinner diameter="18" class="inline-spinner"></mat-spinner>
+            } @else {
+              <mat-icon>restart_alt</mat-icon>
+            }
+            Reset
+          </button>
+        </div>
       </div>
 
       <!-- Targets -->
@@ -90,6 +101,22 @@ import { MatIconModule } from '@angular/material/icon';
       gap: 8px;
     }
 
+    .point-type-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .reset-btn {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+
+      .inline-spinner {
+        display: inline-block;
+      }
+    }
+
     .targets-row {
       display: flex;
       align-items: center;
@@ -113,11 +140,13 @@ export class ControlsComponent {
   @Input() fps = 30;
   @Input() pointType: 'positive' | 'negative' = 'positive';
   @Input() targets: string[] = [];
+  @Input() resetting = false;
 
   @Output() frameChange = new EventEmitter<number>();
   @Output() pointTypeChange = new EventEmitter<string>();
   @Output() addTarget = new EventEmitter<void>();
   @Output() applyFrameRate = new EventEmitter<number>();
+  @Output() resetTargets = new EventEmitter<void>();
 
   currentFrame = 0;
   frameRatePercent = 100;

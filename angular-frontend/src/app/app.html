@@ -42,10 +42,12 @@
       [fps]="session.fps()"
       [pointType]="session.pointType()"
       [targets]="session.targets()"
+      [resetting]="resetting()"
       (frameChange)="onFrameChange($event)"
       (pointTypeChange)="session.pointType.set($any($event))"
       (addTarget)="onAddTarget()"
       (applyFrameRate)="onApplyFrameRate($event)"
+      (resetTargets)="onResetTargets()"
     ></app-controls>
   </div>
 

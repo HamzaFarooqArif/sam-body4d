@@ -104,6 +104,20 @@
   }
 }
 
+.upload-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+
+  app-video-upload {
+    flex: 1;
+  }
+
+  .reset-btn {
+    white-space: nowrap;
+  }
+}
+
 .left-panel {
   max-width: 600px;
 }
