@@ -157,6 +157,7 @@ export class App implements OnInit {
       y: coords.y,
       type: this.session.pointType(),
       targetId: this.session.currentTargetId(),
+      frameIdx: this.session.currentFrameIdx(),
     };
     const updated = [...this.pointMarkers(), newMarker];
     this.pointMarkers.set(updated);
@@ -185,7 +186,7 @@ export class App implements OnInit {
     this.cdr.detectChanges();
 
     const points = markers.map(m => ({
-      frame_idx: this.session.currentFrameIdx() * this.session.frameStep(),
+      frame_idx: m.frameIdx * this.session.frameStep(),
       x: Math.round(m.x),
       y: Math.round(m.y),
       type: m.type,

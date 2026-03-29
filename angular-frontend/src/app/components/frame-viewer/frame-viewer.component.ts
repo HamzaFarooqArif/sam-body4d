@@ -7,6 +7,7 @@ export interface PointMarker {
   y: number;
   type: 'positive' | 'negative';
   targetId: number;
+  frameIdx: number; // original frame index (before frame_step mapping)
 }
 
 @Component({
@@ -114,6 +115,7 @@ export class FrameViewerComponent implements OnChanges, AfterViewInit {
   @Input() interactive = false;
   @Input() loading = false;
   @Input() markers: PointMarker[] = [];
+  @Input() currentFrameIdx = 0;
   @Output() frameClick = new EventEmitter<{ x: number; y: number }>();
   @Output() markerRemove = new EventEmitter<number>(); // emits marker index
 
@@ -134,7 +136,7 @@ export class FrameViewerComponent implements OnChanges, AfterViewInit {
   }
 
   ngOnChanges(changes: SimpleChanges) {
-    if (changes['markers'] || changes['imageSrc']) {
+    if (changes['markers'] || changes['imageSrc'] || changes['currentFrameIdx']) {
       setTimeout(() => this.drawMarkers(), 50);
     }
   }
@@ -233,9 +235,13 @@ export class FrameViewerComponent implements OnChanges, AfterViewInit {
     const radius = Math.max(6, Math.min(img.offsetWidth, img.offsetHeight) * 0.012);
 
     for (const marker of this.markers) {
+      const isCurrentFrame = marker.frameIdx === this.currentFrameIdx;
       const dx = marker.x * scaleX;
       const dy = marker.y * scaleY;
       const color = this.targetColors[(marker.targetId - 1) % this.targetColors.length];
+      const alpha = isCurrentFrame ? 1.0 : 0.3;
+
+      ctx.globalAlpha = alpha;
 
       // Outer ring
       ctx.beginPath();
@@ -268,8 +274,11 @@ export class FrameViewerComponent implements OnChanges, AfterViewInit {
       ctx.fillStyle = '#fff';
       ctx.strokeStyle = '#000';
       ctx.lineWidth = 2;
-      ctx.strokeText(`${marker.targetId}`, dx + radius + 3, dy - radius);
-      ctx.fillText(`${marker.targetId}`, dx + radius + 3, dy - radius);
+      const label = isCurrentFrame ? `${marker.targetId}` : `T${marker.targetId} F${marker.frameIdx}`;
+      ctx.strokeText(label, dx + radius + 3, dy - radius);
+      ctx.fillText(label, dx + radius + 3, dy - radius);
+
+      ctx.globalAlpha = 1.0;
     }
   }
 }

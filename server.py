@@ -183,7 +183,8 @@ def create_app(config_path: str = None):
         new_runtime['video_fps'] = session['runtime'].get('video_fps', 30)
         new_runtime['frame_step'] = session['runtime'].get('frame_step', 1)
 
-        # Group points by target_id
+        # Group points by target_id, then add per target
+        # Each target's points can be on different frames
         from collections import defaultdict
         targets = defaultdict(list)
         for p in points:
@@ -192,13 +193,19 @@ def create_app(config_path: str = None):
         result_image = None
         for target_id in sorted(targets.keys()):
             target_points = targets[target_id]
+            # Group this target's points by frame, add in frame order
+            frame_groups = defaultdict(list)
             for p in target_points:
-                result_image, new_runtime = pipeline.add_point(
-                    new_runtime, video_path,
-                    p['frame_idx'], p['x'], p['y'], p['type'],
-                    p['width'], p['height'],
-                )
-            # Finalize each target
+                frame_groups[p['frame_idx']].append(p)
+
+            for frame_idx in sorted(frame_groups.keys()):
+                for p in frame_groups[frame_idx]:
+                    result_image, new_runtime = pipeline.add_point(
+                        new_runtime, video_path,
+                        p['frame_idx'], p['x'], p['y'], p['type'],
+                        p['width'], p['height'],
+                    )
+            # Finalize this target
             new_runtime = pipeline.add_target(new_runtime)
 
         session['runtime'] = new_runtime
