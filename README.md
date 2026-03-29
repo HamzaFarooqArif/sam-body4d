@@ -15,11 +15,13 @@ By leveraging **pixel-level human continuity** from promptable video segmentatio
 - **Temporally consistent human meshes across the entire video**
 - **Robust multi-human recovery under heavy occlusions**
 - **Robust 4D reconstruction under camera motion**
+- **Adjustable frame rate** — trade quality for speed
+- **Frontend/backend split** — develop UI locally for free, process on cloud GPU
+- **Async processing** — progress tracking, no timeouts
+- **One-command cloud deployment** on RunPod
 
 
-## Quick Start — RunPod (One Command)
-
-Deploy on a RunPod GPU pod with a single command. No HuggingFace token needed — uses freely accessible community model mirrors.
+## Quick Start — RunPod
 
 ### Requirements
 
@@ -29,48 +31,55 @@ Deploy on a RunPod GPU pod with a single command. No HuggingFace token needed �
 - **Volume disk**: 50 GB (mounted at `/workspace`)
 - **HTTP ports**: `7860, 8000`
 
-### Deploy
+### First-time Setup
 
 1. Create a RunPod GPU pod with the requirements above
-2. SSH into the pod
-3. Run:
+2. Open the web terminal and run:
 
 ```bash
-# master branch (original all-in-one app.py)
-curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/master/setup_runpod.sh | bash
-
-# feature branch (frontend/backend split with API)
 curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/feature/frontend-backend-split/setup_runpod.sh | GITHUB_BRANCH=feature/frontend-backend-split bash
 ```
 
-4. Open HTTP port `7860` (Web UI) and `8000` (API) from RunPod
+This automatically installs everything and starts the server (~10-30 min first time).
 
-The script automatically:
-- Installs system dependencies and Python 3.12
-- Detects your CUDA version and installs matching PyTorch
-- Clones this repo and installs all dependencies
-- Downloads all model checkpoints (~15 GB) from community mirrors (no HuggingFace token needed)
-- Starts `server.py` which serves Gradio UI on `:7860` and API on `:8000`
+### After Pod Restart
 
-### Re-running after pod restart
-
-If your volume disk still has checkpoints from a previous run, the script skips downloads and launches in under 2 minutes.
+The venv breaks on restart (container disk wipes Python 3.12). Run from the web terminal:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/master/setup_runpod.sh | bash
+bash /workspace/sam-body4d/start.sh
+```
+
+If venv is OK: pulls code, starts server (~30 sec).
+If venv is broken: runs full setup, then starts server (~10 min).
+
+### Auto-start (Optional)
+
+Set this as the pod's **Start Command** in RunPod template:
+
+```bash
+bash -c "cd /workspace/sam-body4d && git pull; bash /workspace/sam-body4d/start.sh"
 ```
 
 
 ## Architecture
 
-The project is split into frontend and backend for flexible development:
-
 ```
-server.py (pod entry point)
-├── backend/pipeline.py    — model loading + processing (GPU)
-├── frontend/ui.py         — Gradio UI (no model imports)
+server.py (pod entry point — one process, one GPU load)
+├── backend/pipeline.py    — model loading + video processing
+├── backend/mock.py        — fake pipeline for free local dev
+├── frontend/ui.py         — Gradio UI (shared by all modes)
 ├── Gradio UI on :7860     — for users
-└── FastAPI on :8000       — for local development
+└── FastAPI API on :8000   — for local development
+    ├── POST /init_video           — upload video, create session
+    ├── POST /add_point            — annotate, get real mask overlay
+    ├── POST /add_target           — finalize annotation target
+    ├── POST /session_generate_masks_async  — start mask generation (async)
+    ├── POST /session_generate_4d_async     — start 4D generation (async)
+    ├── GET  /job/{id}             — poll progress (0-100%)
+    ├── GET  /job/{id}/result      — download results
+    ├── POST /process              — one-shot: video in, results out
+    └── GET  /health               — server status
 ```
 
 ### Entry Points
@@ -80,42 +89,55 @@ server.py (pod entry point)
 | `server.py` | Pod | Loads models once, serves UI (:7860) + API (:8000) |
 | `local_ui.py --mock` | Your PC | Free dev with fake data, no GPU needed |
 | `local_ui.py --api URL` | Your PC | Local UI talking to pod API for real results |
-| `app.py` | Anywhere | Original all-in-one (unchanged, still works) |
+| `app.py` | Anywhere | Original all-in-one (still works as fallback) |
+| `start.sh` | Pod | Auto-fixes broken venv + starts server |
+| `setup_runpod.sh` | Pod | Full first-time setup |
 
 
-## Development
+## Development Modes
 
 ### Mode 1: Free local dev (no pod, no cost)
 ```bash
+cd sam-body4d
 python local_ui.py --mock
 ```
-Runs the full UI with fake model outputs. Use this to iterate on UI changes, video preprocessing, output formatting, etc.
+Full UI with fake model outputs. Iterate on UI changes, video preprocessing, frame rate control — all free, no GPU needed.
 
 ### Mode 2: Local dev with real results (pod running)
 ```bash
-python local_ui.py --api https://pod-url:8000
+python local_ui.py --api https://your-pod-id-8000.proxy.runpod.net
 ```
-Your local UI sends videos to the pod's API and gets real 3D results back.
+Your local UI sends clicks and videos to the pod. Real SAM-3 masks, real 4D meshes. Uses async polling — no Cloudflare timeout issues.
 
 ### Mode 3: Production (pod serves everything)
-Pod runs `server.py` via the setup script. Users access Gradio on `:7860`. You can simultaneously develop against `:8000`.
+Pod runs `server.py` via the setup script. Users access Gradio on `:7860`. You can simultaneously develop against `:8000` from your PC.
 
 ### Deploying code changes
 ```bash
-# On your PC — push changes
+# On your PC
 git push
 
-# On pod — pull and restart
+# On pod (server keeps running, no reinstall needed)
 cd /workspace/sam-body4d && git pull
-# restart server.py
+pkill -9 -f server.py
+source /workspace/venv/bin/activate && export PYOPENGL_PLATFORM=egl && nohup python server.py > /workspace/server.log 2>&1 &
 ```
 
-No need to re-download models or reinstall dependencies.
+
+## UI Features
+
+- **Video upload** — drag and drop MP4
+- **Frame rate slider** — adjust processing frame rate (10-100%), click Apply to preview
+- **Frame navigation** — scrub through frames with slider
+- **Click-to-annotate** — positive/negative points for target selection
+- **Multi-target support** — annotate multiple people
+- **Mask Generation** — SAM-3 video segmentation with progress bar
+- **4D Generation** — full mesh recovery with adaptive progress tracking
+- **Async processing** — no timeout issues, real-time progress updates
 
 
 ## Docker (Alternative)
 
-### Build & Run
 ```bash
 docker build -t sam-body4d .
 docker run --gpus all -p 7860:7860 -p 8000:8000 -v $(pwd)/outputs:/app/outputs sam-body4d
@@ -129,19 +151,21 @@ docker-compose up --build
 
 ## Local Installation (without Docker or RunPod)
 
-#### 1. Create and Activate Environment
+Requires a GPU with 48 GB+ VRAM.
+
+#### 1. Create Environment
 ```bash
 conda create -n body4d python=3.12 -y
 conda activate body4d
 ```
 
-#### 2. Install PyTorch, Detectron2, and SAM3
+#### 2. Install PyTorch, Detectron2, SAM3
 ```bash
 pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu126
 pip install 'git+https://github.com/facebookresearch/detectron2.git@a1ce2f9' --no-build-isolation --no-deps
 pip install -e models/sam3
 ```
-Choose the PyTorch CUDA version matching your system: https://pytorch.org/get-started/previous-versions/
+Choose PyTorch CUDA version matching your system: https://pytorch.org/get-started/previous-versions/
 
 #### 3. Install Dependencies
 ```bash
@@ -150,24 +174,19 @@ pip install fastapi uvicorn python-multipart
 ```
 
 #### 4. Download Checkpoints
-
 ```bash
 python scripts/setup.py --ckpt-root /path/to/checkpoints
 ```
 
-Or download manually and place under your checkpoint root:
-
+Or place manually:
 ```
 checkpoints/
-├── sam3/
-│   └── sam3.pt
+├── sam3/sam3.pt
 ├── sam-3d-body-dinov3/
 │   ├── model.ckpt
 │   ├── model_config.yaml
-│   └── assets/
-│       └── mhr_model.pt
-├── moge-2-vitl-normal/
-│   └── model.pt
+│   └── assets/mhr_model.pt
+├── moge-2-vitl-normal/model.pt
 ├── diffusion-vas-amodal-segmentation/
 ├── diffusion-vas-content-completion/
 └── depth_anything_v2_vitl.pth
@@ -175,22 +194,8 @@ checkpoints/
 
 #### 5. Run
 ```bash
-# Full server (Gradio + API)
-python server.py
-
-# Or original all-in-one
-python app.py
+python server.py      # Gradio :7860 + API :8000
 ```
-
-## Batch Processing
-
-Run the full pipeline on a video without the UI:
-
-```bash
-python scripts/offline_app.py --input_video <path>
-```
-
-Input can be a directory of frames or an `.mp4` file. The pipeline auto-detects humans and performs 4D reconstruction.
 
 
 ## Resource Usage
@@ -200,9 +205,38 @@ Input can be a directory of frames or an `.mp4` file. The pipeline auto-detects 
 | GPU VRAM | ~28 GB peak |
 | System RAM | ~25 GB |
 | Disk (checkpoints) | ~15 GB |
-| Processing time | ~6 min per video |
+| Processing time (100% fps) | ~6 min per video |
+| Processing time (50% fps) | ~3 min per video |
+| Processing time (25% fps) | ~1.5 min per video |
 
 For detailed profiling, see [resources.md](assets/doc/resources.md).
+
+
+## Project Structure
+
+```
+sam-body4d/
+├── server.py              — pod entry point (Gradio + API, one process)
+├── local_ui.py            — PC entry point (--mock or --api)
+├── app.py                 — original all-in-one (still works)
+├── start.sh               — pod auto-start script
+├── setup_runpod.sh        — full first-time RunPod setup
+├── backend/
+│   ├── pipeline.py        — model loading + processing logic
+│   └── mock.py            — fake pipeline for free local dev
+├── frontend/
+│   └── ui.py              — shared Gradio UI definition
+├── models/
+│   ├── sam3/              — SAM-3 video segmentation
+│   ├── sam_3d_body/       — SAM-3D-Body mesh recovery
+│   └── diffusion_vas/     — Diffusion-VAS occlusion recovery
+├── utils/                 — helper functions
+├── configs/               — model config files
+├── scripts/               — batch processing, setup
+├── docker/                — Docker support files
+├── Dockerfile
+└── docker-compose.yml
+```
 
 
 ## Citation
