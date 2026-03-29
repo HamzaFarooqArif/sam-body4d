@@ -21,6 +21,11 @@
   <div class="panel left-panel">
     <h3>Input</h3>
 
+    <app-examples
+      #examplesComp
+      (exampleSelected)="onExampleSelected($event)"
+    ></app-examples>
+
     <app-video-upload
       [uploading]="uploading()"
       (fileSelected)="onFileSelected($event)"

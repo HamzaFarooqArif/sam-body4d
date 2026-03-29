@@ -75,6 +75,57 @@ def create_app(config_path: str = None):
         scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
         return {"status": "ready", "server_url": f"{scheme}://{host}"}
 
+    # ---- Example videos ----
+    examples_dir = os.path.join(ROOT, "assets", "examples")
+
+    @api.get("/examples")
+    def list_examples():
+        """List available example videos."""
+        examples = []
+        if os.path.isdir(examples_dir):
+            for f in sorted(os.listdir(examples_dir)):
+                if f.endswith('.mp4'):
+                    examples.append({"name": f, "url": f"/api/examples/{f}"})
+        return {"examples": examples}
+
+    @api.get("/examples/{filename}")
+    async def get_example(filename: str):
+        """Serve an example video file."""
+        filepath = os.path.join(examples_dir, filename)
+        if not os.path.exists(filepath):
+            return JSONResponse({"error": "Not found"}, status_code=404)
+        return FileResponse(filepath, media_type="video/mp4")
+
+    @api.post("/init_example")
+    async def init_example(filename: str = Form(...)):
+        """Initialize session with an example video (no upload needed)."""
+        filepath = os.path.join(examples_dir, filename)
+        if not os.path.exists(filepath):
+            return JSONResponse({"error": "Example not found"}, status_code=404)
+
+        runtime = pipeline.init_video_state(filepath)
+        output_dir = os.path.join(ROOT, "outputs", _gen_id())
+        os.makedirs(output_dir, exist_ok=True)
+
+        session_id = _gen_id()
+        sessions[session_id] = {
+            'runtime': runtime,
+            'output_dir': output_dir,
+            'video_path': filepath,
+        }
+
+        fps, total = pipeline.read_video_metadata(filepath)
+        first_frame = pipeline.read_frame_at(filepath, 0)
+
+        return JSONResponse({
+            "session_id": session_id,
+            "fps": fps,
+            "total_frames": total,
+            "first_frame": _image_to_base64(first_frame),
+            "width": first_frame.size[0],
+            "height": first_frame.size[1],
+        })
+
     # ---- Global error handler — prevents server crash on bad requests ----
     from fastapi.exceptions import RequestValidationError
 

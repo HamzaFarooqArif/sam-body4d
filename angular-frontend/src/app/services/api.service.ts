@@ -40,6 +40,16 @@ export class ApiService {
     return this.baseUrl;
   }
 
+  getExamples(): Observable<{ examples: Array<{ name: string; url: string }> }> {
+    return this.http.get<{ examples: Array<{ name: string; url: string }> }>(`${this.baseUrl}/examples`);
+  }
+
+  initExample(filename: string): Observable<InitVideoResponse> {
+    const formData = new FormData();
+    formData.append('filename', filename);
+    return this.http.post<InitVideoResponse>(`${this.baseUrl}/init_example`, formData);
+  }
+
   health(): Observable<{ status: string; server_url?: string }> {
     return this.http.get<{ status: string; server_url?: string }>(`${this.baseUrl}/health`);
   }

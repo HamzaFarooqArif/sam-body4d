@@ -35,6 +35,9 @@ import { MatIconModule } from '@angular/material/icon';
         }
 
         @if (maskVideoUrl) {
+          <div class="completed-label">
+            Mask Generation completed in {{ maskElapsed }}
+          </div>
           <video
             [src]="maskVideoUrl"
             controls
@@ -68,6 +71,9 @@ import { MatIconModule } from '@angular/material/icon';
         }
 
         @if (fourDVideoUrl) {
+          <div class="completed-label">
+            4D Generation completed in {{ fourDElapsed }}
+          </div>
           <video
             [src]="fourDVideoUrl"
             controls
@@ -115,6 +121,12 @@ import { MatIconModule } from '@angular/material/icon';
           color: rgba(255,255,255,0.4);
         }
       }
+    }
+
+    .completed-label {
+      color: #4ade80;
+      font-size: 13px;
+      padding: 4px 0;
     }
 
     .result-video {

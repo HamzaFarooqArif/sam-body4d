@@ -1,4 +1,4 @@
-import { Component, signal, inject, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, signal, inject, OnInit, ChangeDetectorRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -15,6 +15,7 @@ import { VideoUploadComponent } from './components/video-upload/video-upload.com
 import { FrameViewerComponent, PointMarker } from './components/frame-viewer/frame-viewer.component';
 import { ControlsComponent } from './components/controls/controls.component';
 import { ResultsComponent } from './components/results/results.component';
+import { ExamplesComponent } from './components/examples/examples.component';
 
 @Component({
   selector: 'app-root',
@@ -22,7 +23,7 @@ import { ResultsComponent } from './components/results/results.component';
   imports: [
     CommonModule, FormsModule,
     MatToolbarModule, MatInputModule, MatFormFieldModule, MatButtonModule, MatIconModule, MatSnackBarModule,
-    VideoUploadComponent, FrameViewerComponent, ControlsComponent, ResultsComponent,
+    VideoUploadComponent, FrameViewerComponent, ControlsComponent, ResultsComponent, ExamplesComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
@@ -34,6 +35,7 @@ export class App implements OnInit {
   private cdr = inject(ChangeDetectorRef);
   session = inject(SessionService);
   private currentVideoFile: File | null = null;
+  @ViewChild('examplesComp') examplesComp!: ExamplesComponent;
 
   connected = signal(false);
   isLocalDev = window.location.hostname === 'localhost';
@@ -95,6 +97,45 @@ export class App implements OnInit {
       error: () => {
         this.connected.set(false);
         this.snackBar.open('Cannot reach server', '', { duration: 3000 });
+      },
+    });
+  }
+
+  onExampleSelected(filename: string) {
+    // Delete old session
+    const oldSid = this.session.sessionId();
+    if (oldSid) {
+      this.api.deleteSession(oldSid).subscribe();
+    }
+
+    this.session.reset();
+    this.maskVideoUrl.set(null);
+    this.fourDVideoUrl.set(null);
+    this.pointMarkers.set([]);
+    this.currentVideoFile = null;
+
+    this.api.initExample(filename).subscribe({
+      next: async (res) => {
+        this.session.sessionId.set(res.session_id);
+        this.session.fps.set(res.fps);
+        this.session.totalFrames.set(res.total_frames);
+        this.session.videoWidth.set(res.width);
+        this.session.videoHeight.set(res.height);
+        this.currentFrameSrc.set('data:image/png;base64,' + res.first_frame);
+
+        // Fetch the example video for local frame scrubbing
+        const response = await fetch(`/api/examples/${filename}`);
+        const blob = await response.blob();
+        const file = new File([blob], filename, { type: 'video/mp4' });
+        this.currentVideoFile = file;
+        await this.frameExtractor.loadVideo(file, res.fps);
+
+        this.examplesComp?.clearLoading();
+        this.snackBar.open(`Example loaded: ${res.total_frames} frames`, '', { duration: 2000 });
+      },
+      error: (err) => {
+        this.examplesComp?.clearLoading();
+        this.snackBar.open('Failed: ' + (err.error?.error || err.message), '', { duration: 3000 });
       },
     });
   }
