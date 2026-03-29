@@ -35,7 +35,6 @@ export class App implements OnInit {
   session = inject(SessionService);
   private currentVideoFile: File | null = null;
 
-  apiUrl = 'http://localhost:8000';
   connected = signal(false);
   uploading = signal(false);
 
@@ -52,16 +51,10 @@ export class App implements OnInit {
   fourDElapsed = signal('');
 
   ngOnInit() {
-    const saved = localStorage.getItem('sam_body4d_api_url');
-    if (saved) {
-      this.apiUrl = saved;
-    }
     this.checkConnection();
   }
 
   checkConnection() {
-    this.api.setBaseUrl(this.apiUrl);
-    localStorage.setItem('sam_body4d_api_url', this.apiUrl);
     this.api.health().subscribe({
       next: () => {
         this.connected.set(true);

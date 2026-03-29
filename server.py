@@ -373,50 +373,40 @@ def create_app(config_path: str = None):
     return api
 
 
-def create_ui_app():
-    """Create a simple static file server for the Angular frontend."""
-    from fastapi import FastAPI as FA
-    ui = FA()
-
-    static_dir = os.path.join(ROOT, "static")
-    if os.path.isdir(static_dir):
-        # Serve index.html for any non-file route (Angular SPA routing)
-        @ui.get("/")
-        async def root():
-            return FileResponse(os.path.join(static_dir, "index.html"))
-
-        ui.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
-    else:
-        @ui.get("/")
-        async def root():
-            return HTMLResponse("<h1>SAM-Body4D</h1><p>Static files not found. Build Angular app first.</p>")
-
-    return ui
-
-
 def main():
     parser = argparse.ArgumentParser(description="SAM-Body4D Server")
     parser.add_argument("--config", type=str, default=None, help="Path to body4d.yaml")
-    parser.add_argument("--ui-port", type=int, default=7860, help="Angular UI port")
-    parser.add_argument("--api-port", type=int, default=8000, help="API port")
+    parser.add_argument("--port", type=int, default=7860, help="Server port")
     args = parser.parse_args()
 
+    # Create API app (all endpoints under /api/)
     api = create_app(args.config)
-    ui = create_ui_app()
 
-    import threading
+    # Create main app that serves both Angular UI and API
+    app = FastAPI(title="SAM-Body4D")
 
-    # Start Angular UI server
-    ui_thread = threading.Thread(
-        target=lambda: uvicorn.run(ui, host="0.0.0.0", port=args.ui_port),
-        daemon=True,
-    )
-    ui_thread.start()
-    print(f"Angular UI serving on port {args.ui_port}...")
+    # Mount API under /api/
+    app.mount("/api", api)
 
-    # Start API server (blocks main thread)
-    print(f"API starting on port {args.api_port}...")
-    uvicorn.run(api, host="0.0.0.0", port=args.api_port)
+    # Serve Angular static files at /
+    static_dir = os.path.join(ROOT, "static")
+    if os.path.isdir(static_dir):
+        # SPA fallback: serve index.html for any route not matching a static file
+        @app.get("/{full_path:path}")
+        async def serve_spa(full_path: str):
+            file_path = os.path.join(static_dir, full_path)
+            if full_path and os.path.isfile(file_path):
+                return FileResponse(file_path)
+            return FileResponse(os.path.join(static_dir, "index.html"))
+    else:
+        @app.get("/")
+        async def root():
+            return HTMLResponse("<h1>SAM-Body4D</h1><p>Static files not found.</p>")
+
+    print(f"Starting server on port {args.port}...")
+    print(f"  Angular UI: http://0.0.0.0:{args.port}/")
+    print(f"  API:         http://0.0.0.0:{args.port}/api/")
+    uvicorn.run(app, host="0.0.0.0", port=args.port)
 
 
 if __name__ == "__main__":
