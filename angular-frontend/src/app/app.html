@@ -35,7 +35,7 @@
 
     <app-controls
       [hasSession]="session.hasSession()"
-      [totalFrames]="session.totalFrames()"
+      [totalFrames]="session.effectiveFrames()"
       [fps]="session.fps()"
       [pointType]="session.pointType()"
       [targets]="session.targets()"

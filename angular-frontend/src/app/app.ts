@@ -103,14 +103,15 @@ export class App implements OnInit {
 
   async onFrameChange(idx: number) {
     this.session.currentFrameIdx.set(idx);
+    // Map reduced frame index to original: frame 5 at step 2 = original frame 10
+    const originalIdx = idx * this.session.frameStep();
     try {
-      const dataUrl = await this.frameExtractor.getFrame(idx);
+      const dataUrl = await this.frameExtractor.getFrame(originalIdx);
       this.currentFrameSrc.set(dataUrl);
     } catch {
-      // Fallback to API if local extraction fails
       const sid = this.session.sessionId();
       if (sid) {
-        this.api.getFrame(sid, idx).subscribe({
+        this.api.getFrame(sid, originalIdx).subscribe({
           next: (res) => this.currentFrameSrc.set('data:image/png;base64,' + res.frame),
           error: () => {},
         });
@@ -150,10 +151,18 @@ export class App implements OnInit {
     });
   }
 
-  onApplyFrameRate(pct: number) {
+  async onApplyFrameRate(pct: number) {
     const step = Math.max(1, Math.round(100 / pct));
     this.session.frameStep.set(step);
-    this.snackBar.open(`Frame step set to ${step} (${pct}%)`, '', { duration: 2000 });
+    this.session.currentFrameIdx.set(0);
+
+    // Show first frame at new framerate
+    try {
+      const dataUrl = await this.frameExtractor.getFrame(0);
+      this.currentFrameSrc.set(dataUrl);
+    } catch {}
+
+    this.snackBar.open(`Frame rate: ${pct}% (${this.session.effectiveFrames()} frames, step ${step})`, '', { duration: 2000 });
   }
 
   onGenerateMasks() {
