@@ -41,7 +41,7 @@ export class App implements OnInit {
   apiUrlInput = '';
   currentApiUrl = signal('/api');
   uploading = signal(false);
-  exampleLoading = signal(false);
+  exampleLoadingName = signal<string | null>(null);
 
   currentFrameSrc = signal<string | null>(null);
   pointMarkers = signal<PointMarker[]>([]);
@@ -101,35 +101,23 @@ export class App implements OnInit {
     });
   }
 
-  onExampleSelected(filename: string) {
-    const oldSid = this.session.sessionId();
-    if (oldSid) {
-      this.api.deleteSession(oldSid).subscribe();
+  async onExampleSelected(filename: string) {
+    this.exampleLoadingName.set(filename);
+    try {
+      const response = await fetch(`/examples/${filename}`);
+      const blob = await response.blob();
+
+      // Verify we got a video, not HTML (SPA fallback)
+      if (blob.type && !blob.type.startsWith('video')) {
+        throw new Error('Got HTML instead of video');
+      }
+
+      const file = new File([blob], filename, { type: 'video/mp4' });
+      this.onFileSelected(file);
+    } catch {
+      this.snackBar.open('Failed to load example', '', { duration: 3000 });
     }
-
-    this.session.reset();
-    this.maskVideoUrl.set(null);
-    this.fourDVideoUrl.set(null);
-    this.pointMarkers.set([]);
-    this.currentVideoFile = null;
-    this.exampleLoading.set(true);
-
-    this.api.initExample(filename).subscribe({
-      next: (res) => {
-        this.session.sessionId.set(res.session_id);
-        this.session.fps.set(res.fps);
-        this.session.totalFrames.set(res.total_frames);
-        this.session.videoWidth.set(res.width);
-        this.session.videoHeight.set(res.height);
-        this.currentFrameSrc.set('data:image/png;base64,' + res.first_frame);
-        this.exampleLoading.set(false);
-        this.snackBar.open(`Example loaded: ${res.total_frames} frames`, '', { duration: 2000 });
-      },
-      error: (err) => {
-        this.exampleLoading.set(false);
-        this.snackBar.open('Failed: ' + (err.error?.error || err.message), '', { duration: 3000 });
-      },
-    });
+    this.exampleLoadingName.set(null);
   }
 
   onFileSelected(file: File) {
@@ -156,7 +144,12 @@ export class App implements OnInit {
         this.currentFrameSrc.set('data:image/png;base64,' + res.first_frame);
 
         // Load video locally for fast frame scrubbing
-        await this.frameExtractor.loadVideo(file, res.fps);
+        try {
+          await this.frameExtractor.loadVideo(file, res.fps);
+        } catch {
+          // Local scrubbing unavailable — frame slider will use API fallback
+          this.frameExtractor.cleanup();
+        }
 
         this.uploading.set(false);
         this.snackBar.open(`Video loaded: ${res.total_frames} frames`, '', { duration: 2000 });

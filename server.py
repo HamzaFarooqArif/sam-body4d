@@ -75,82 +75,6 @@ def create_app(config_path: str = None):
         scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
         return {"status": "ready", "server_url": f"{scheme}://{host}"}
 
-    # ---- Example videos ----
-    examples_dir = os.path.join(ROOT, "assets", "examples")
-
-    # Pre-generate example thumbnails at startup
-    example_thumbs = {}
-    if os.path.isdir(examples_dir):
-        for f in sorted(os.listdir(examples_dir)):
-            if f.endswith('.mp4'):
-                frame = pipeline.read_frame_at(os.path.join(examples_dir, f), 10)
-                if frame:
-                    example_thumbs[f] = _image_to_base64(frame)
-        print(f"[Server] Pre-generated {len(example_thumbs)} example thumbnails")
-
-    @api.get("/examples")
-    def list_examples():
-        """List available example videos with pre-generated thumbnails."""
-        examples = []
-        if os.path.isdir(examples_dir):
-            for f in sorted(os.listdir(examples_dir)):
-                if f.endswith('.mp4'):
-                    examples.append({
-                        "name": f,
-                        "url": f"/api/examples/{f}",
-                        "thumb": example_thumbs.get(f),
-                    })
-        return {"examples": examples}
-
-    @api.get("/examples/{filename}")
-    async def get_example(filename: str):
-        """Serve an example video file."""
-        filepath = os.path.join(examples_dir, filename)
-        if not os.path.exists(filepath):
-            return JSONResponse({"error": "Not found"}, status_code=404)
-        return FileResponse(filepath, media_type="video/mp4")
-
-    @api.get("/examples/{filename}/thumb")
-    async def get_example_thumb(filename: str):
-        """Get first frame of example video as base64 image."""
-        filepath = os.path.join(examples_dir, filename)
-        if not os.path.exists(filepath):
-            return JSONResponse({"error": "Not found"}, status_code=404)
-        frame = pipeline.read_frame_at(filepath, 10)
-        if frame is None:
-            return JSONResponse({"error": "Failed to read frame"}, status_code=500)
-        return JSONResponse({"thumb": _image_to_base64(frame)})
-
-    @api.post("/init_example")
-    async def init_example(filename: str = Form(...)):
-        """Initialize session with an example video (no upload needed)."""
-        filepath = os.path.join(examples_dir, filename)
-        if not os.path.exists(filepath):
-            return JSONResponse({"error": "Example not found"}, status_code=404)
-
-        runtime = pipeline.init_video_state(filepath)
-        output_dir = os.path.join(ROOT, "outputs", _gen_id())
-        os.makedirs(output_dir, exist_ok=True)
-
-        session_id = _gen_id()
-        sessions[session_id] = {
-            'runtime': runtime,
-            'output_dir': output_dir,
-            'video_path': filepath,
-        }
-
-        fps, total = pipeline.read_video_metadata(filepath)
-        first_frame = pipeline.read_frame_at(filepath, 0)
-
-        return JSONResponse({
-            "session_id": session_id,
-            "fps": fps,
-            "total_frames": total,
-            "first_frame": _image_to_base64(first_frame),
-            "width": first_frame.size[0],
-            "height": first_frame.size[1],
-        })
-
     # ---- Global error handler — prevents server crash on bad requests ----
     from fastapi.exceptions import RequestValidationError
 
@@ -241,55 +165,6 @@ def create_app(config_path: str = None):
             return JSONResponse({"error": "Failed to process point"}, status_code=400)
 
         return JSONResponse({"image": _image_to_base64(painted)})
-
-    @api.post("/set_points")
-    async def set_points(request: Request):
-        """Reset session points and set all points at once. Supports multiple targets."""
-        body = await request.json()
-        session_id = body.get('session_id')
-        points = body.get('points', [])
-
-        session = sessions.get(session_id)
-        if not session:
-            return JSONResponse({"error": "Invalid session_id"}, status_code=404)
-
-        # Re-init SAM-3 state with same video
-        video_path = session['video_path']
-        new_runtime = pipeline.init_video_state(video_path)
-        new_runtime['video_fps'] = session['runtime'].get('video_fps', 30)
-        new_runtime['frame_step'] = session['runtime'].get('frame_step', 1)
-
-        # Group points by target_id, then add per target
-        # Each target's points can be on different frames
-        from collections import defaultdict
-        targets = defaultdict(list)
-        for p in points:
-            targets[p['target_id']].append(p)
-
-        result_image = None
-        for target_id in sorted(targets.keys()):
-            target_points = targets[target_id]
-            # Group this target's points by frame, add in frame order
-            frame_groups = defaultdict(list)
-            for p in target_points:
-                frame_groups[p['frame_idx']].append(p)
-
-            for frame_idx in sorted(frame_groups.keys()):
-                for p in frame_groups[frame_idx]:
-                    result_image, new_runtime = pipeline.add_point(
-                        new_runtime, video_path,
-                        p['frame_idx'], p['x'], p['y'], p['type'],
-                        p['width'], p['height'],
-                    )
-            # Finalize this target
-            new_runtime = pipeline.add_target(new_runtime)
-
-        session['runtime'] = new_runtime
-
-        if result_image is None:
-            return JSONResponse({"image": None})
-
-        return JSONResponse({"image": _image_to_base64(result_image)})
 
     @api.post("/add_target")
     async def add_target(session_id: str = Form(...)):

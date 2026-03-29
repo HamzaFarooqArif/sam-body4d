@@ -18,7 +18,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
       <div class="control-group">
         <label>Processing Frame Rate: {{ frameRatePercent }}%</label>
         <div class="framerate-row">
-          <mat-slider min="10" max="100" step="5" class="full-width">
+          <mat-slider min="10" max="100" step="5" class="full-width" [disabled]="!hasSession">
             <input matSliderThumb [(ngModel)]="frameRatePercent" (ngModelChange)="onFrameRateChange()" />
           </mat-slider>
           <button mat-stroked-button (click)="applyFrameRate.emit(frameRatePercent)" [disabled]="!hasSession">
@@ -31,15 +31,9 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
       <!-- Frame Slider -->
       <div class="control-group">
         <label>Frame: {{ currentFrame }} / {{ totalFrames - 1 }}</label>
-        <input
-          type="range"
-          [min]="0"
-          [max]="totalFrames - 1"
-          [value]="currentFrame"
-          (input)="onFrameSliderChange(+$any($event.target).value)"
-          [disabled]="!hasSession"
-          class="frame-range"
-        />
+        <mat-slider [min]="0" [max]="totalFrames - 1" [step]="1" class="full-width" [disabled]="!hasSession">
+          <input matSliderThumb [value]="currentFrame" (valueChange)="onFrameSliderChange($event)" />
+        </mat-slider>
         <span class="info-text">{{ timeText }}</span>
       </div>
 
@@ -160,7 +154,7 @@ export class ControlsComponent {
   @Output() applyFrameRate = new EventEmitter<number>();
   @Output() resetTargets = new EventEmitter<void>();
 
-  currentFrame = 0;
+  @Input() currentFrame = 0;
   frameRatePercent = 100;
   frameInfo = '';
 

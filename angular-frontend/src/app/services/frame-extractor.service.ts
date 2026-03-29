@@ -44,8 +44,12 @@ export class FrameExtractorService {
     const time = frameIdx / this.fps;
     this.videoEl.currentTime = time;
 
-    await new Promise<void>((resolve) => {
-      this.videoEl!.onseeked = () => resolve();
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Seek timeout')), 5000);
+      this.videoEl!.onseeked = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
     });
 
     this.ctx.drawImage(this.videoEl, 0, 0);

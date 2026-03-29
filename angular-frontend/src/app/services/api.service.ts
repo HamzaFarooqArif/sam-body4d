@@ -40,20 +40,6 @@ export class ApiService {
     return this.baseUrl;
   }
 
-  getExamples(): Observable<{ examples: Array<{ name: string; url: string }> }> {
-    return this.http.get<{ examples: Array<{ name: string; url: string }> }>(`${this.baseUrl}/examples`);
-  }
-
-  getExampleThumb(filename: string): Observable<{ thumb: string }> {
-    return this.http.get<{ thumb: string }>(`${this.baseUrl}/examples/${filename}/thumb`);
-  }
-
-  initExample(filename: string): Observable<InitVideoResponse> {
-    const formData = new FormData();
-    formData.append('filename', filename);
-    return this.http.post<InitVideoResponse>(`${this.baseUrl}/init_example`, formData);
-  }
-
   health(): Observable<{ status: string; server_url?: string }> {
     return this.http.get<{ status: string; server_url?: string }>(`${this.baseUrl}/health`);
   }
@@ -91,15 +77,7 @@ export class ApiService {
     return this.http.post<AddPointResponse>(`${this.baseUrl}/add_point`, formData);
   }
 
-  setPoints(
-    sessionId: string,
-    points: Array<{ frame_idx: number; x: number; y: number; type: string; target_id: number; width: number; height: number }>,
-  ): Observable<{ image: string | null }> {
-    return this.http.post<{ image: string | null }>(`${this.baseUrl}/set_points`, {
-      session_id: sessionId,
-      points,
-    });
-  }
+
 
   addTarget(sessionId: string): Observable<AddTargetResponse> {
     const formData = new FormData();

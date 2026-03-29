@@ -1,5 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, inject, ChangeDetectorRef } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { Component, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -14,19 +13,13 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
         <label>Example Videos</label>
         <div class="examples-row">
           @for (ex of examples; track ex.name) {
-            <div class="example-card" (click)="onSelect(ex)" [class.loading]="loading">
-              @if (ex.thumb) {
-                <img [src]="ex.thumb" class="example-thumb" />
-              } @else {
-                <div class="example-thumb placeholder-thumb"></div>
-              }
-              <div class="example-overlay">
-                @if (loading) {
+            <div class="example-card" (click)="onSelect(ex)" [class.loading]="loadingName === ex.name">
+              <img [src]="ex.thumb" class="example-thumb" />
+              @if (loadingName === ex.name) {
+                <div class="example-overlay">
                   <mat-spinner diameter="24"></mat-spinner>
-                } @else {
-                  <mat-icon>play_circle</mat-icon>
-                }
-              </div>
+                </div>
+              }
               <span class="example-name">{{ ex.name.replace('.mp4', '') }}</span>
             </div>
           }
@@ -111,37 +104,18 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
     }
   `],
 })
-export class ExamplesComponent implements OnInit {
-  @Input() loading = false;
+export class ExamplesComponent {
+  @Input() loadingName: string | null = null;
   @Output() exampleSelected = new EventEmitter<string>();
-  private http = inject(HttpClient);
-  private cdr = inject(ChangeDetectorRef);
 
-  examples: Array<{ name: string; url: string; thumb?: string }> = [];
+  examples = [
+    { name: 'example1.mp4', thumb: '/examples/example1.jpg' },
+    { name: 'example2.mp4', thumb: '/examples/example2.jpg' },
+    { name: 'example3.mp4', thumb: '/examples/example3.jpg' },
+  ];
 
-  ngOnInit() {
-    this.loadExamples();
-  }
-
-  private loadExamples(retries = 3) {
-    this.http.get<{ examples: Array<{ name: string; url: string; thumb?: string }> }>('/api/examples').subscribe({
-      next: (res) => {
-        this.examples = [...res.examples.map(ex => ({
-          ...ex,
-          thumb: ex.thumb ? 'data:image/png;base64,' + ex.thumb : undefined,
-        }))];
-        this.cdr.detectChanges();
-      },
-      error: () => {
-        if (retries > 0) {
-          setTimeout(() => this.loadExamples(retries - 1), 2000);
-        }
-      },
-    });
-  }
-
-  onSelect(ex: { name: string; url: string; thumb?: string }) {
-    if (this.loading) return;
+  onSelect(ex: { name: string; thumb: string }) {
+    if (this.loadingName) return;
     this.exampleSelected.emit(ex.name);
   }
 }

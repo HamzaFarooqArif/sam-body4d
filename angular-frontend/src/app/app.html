@@ -22,7 +22,7 @@
     <h3>Input</h3>
 
     <app-examples
-      [loading]="exampleLoading()"
+      [loadingName]="exampleLoadingName()"
       (exampleSelected)="onExampleSelected($event)"
     ></app-examples>
 
@@ -43,6 +43,7 @@
 
     <app-controls
       [hasSession]="session.hasSession()"
+      [currentFrame]="session.currentFrameIdx()"
       [totalFrames]="session.effectiveFrames()"
       [fps]="session.fps()"
       [pointType]="session.pointType()"
