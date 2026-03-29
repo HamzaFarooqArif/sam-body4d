@@ -112,6 +112,10 @@ export class ApiService {
     );
   }
 
+  getJobResultBlob(jobId: string): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}/job/${jobId}/result`, { responseType: 'blob' });
+  }
+
   deleteSession(sessionId: string): Observable<any> {
     const formData = new FormData();
     formData.append('session_id', sessionId);

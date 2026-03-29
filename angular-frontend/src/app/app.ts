@@ -179,9 +179,33 @@ export class App implements OnInit {
     this.api.generate4dAsync(sid, this.session.frameStep()).subscribe({
       next: (res) => {
         this.pollJob(res.job_id, startTime, this.fourDProgress, this.fourDElapsed, () => {
-          this.fourDVideoUrl.set(this.api.getJobResultUrl(res.job_id));
-          this.fourDGenerating.set(false);
-          this.snackBar.open('4D generation complete!', '', { duration: 3000 });
+          // 4D result is a zip — download and extract video
+          this.api.getJobResultBlob(res.job_id).subscribe({
+            next: async (blob) => {
+              try {
+                const { BlobReader, ZipReader, BlobWriter } = await import('@zip.js/zip.js');
+                const reader = new ZipReader(new BlobReader(blob));
+                const entries = await reader.getEntries();
+                const videoEntry = entries.find(e => e.filename.endsWith('.mp4'));
+                if (videoEntry && 'getData' in videoEntry) {
+                  const videoBlob = await (videoEntry as any).getData(new BlobWriter('video/mp4'));
+                  this.fourDVideoUrl.set(URL.createObjectURL(videoBlob));
+                } else {
+                  this.snackBar.open('No video found in results', '', { duration: 3000 });
+                }
+                await reader.close();
+              } catch {
+                // Fallback — might be a direct video file, not zip
+                this.fourDVideoUrl.set(URL.createObjectURL(blob));
+              }
+              this.fourDGenerating.set(false);
+              this.snackBar.open('4D generation complete!', '', { duration: 3000 });
+            },
+            error: () => {
+              this.fourDGenerating.set(false);
+              this.snackBar.open('Failed to download result', '', { duration: 3000 });
+            },
+          });
         }, () => {
           this.fourDGenerating.set(false);
         });
