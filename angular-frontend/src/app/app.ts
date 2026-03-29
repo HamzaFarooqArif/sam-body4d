@@ -39,6 +39,7 @@ export class App implements OnInit {
   uploading = signal(false);
 
   currentFrameSrc = signal<string | null>(null);
+  annotating = signal(false);
   maskVideoUrl = signal<string | null>(null);
   fourDVideoUrl = signal<string | null>(null);
 
@@ -121,19 +122,28 @@ export class App implements OnInit {
 
   onFrameClick(coords: { x: number; y: number }) {
     const sid = this.session.sessionId();
-    if (!sid) return;
+    if (!sid || this.annotating()) return;
+
+    this.annotating.set(true);
+    const originalIdx = this.session.currentFrameIdx() * this.session.frameStep();
 
     this.api.addPoint(
       sid,
-      this.session.currentFrameIdx(),
+      originalIdx,
       coords.x,
       coords.y,
       this.session.pointType(),
       this.session.videoWidth(),
       this.session.videoHeight(),
     ).subscribe({
-      next: (res) => this.currentFrameSrc.set('data:image/png;base64,' + res.image),
-      error: (err) => this.snackBar.open('Annotation failed: ' + (err.error?.error || ''), '', { duration: 3000 }),
+      next: (res) => {
+        this.currentFrameSrc.set('data:image/png;base64,' + res.image);
+        this.annotating.set(false);
+      },
+      error: (err) => {
+        this.snackBar.open('Annotation failed: ' + (err.error?.error || ''), '', { duration: 3000 });
+        this.annotating.set(false);
+      },
     });
   }
 

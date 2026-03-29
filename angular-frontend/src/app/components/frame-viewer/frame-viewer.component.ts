@@ -1,10 +1,11 @@
 import { Component, Input, Output, EventEmitter, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 @Component({
   selector: 'app-frame-viewer',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, MatProgressSpinnerModule],
   template: `
     <div class="frame-container" #container>
       @if (imageSrc) {
@@ -15,7 +16,13 @@ import { CommonModule } from '@angular/common';
           (load)="onImageLoad()"
           class="frame-image"
           [class.clickable]="interactive"
+          [class.disabled]="loading"
         />
+        @if (loading) {
+          <div class="loading-overlay">
+            <mat-spinner diameter="32"></mat-spinner>
+          </div>
+        }
       } @else {
         <div class="placeholder">
           <p>Upload a video to begin</p>
@@ -45,6 +52,20 @@ import { CommonModule } from '@angular/common';
       }
     }
 
+    .frame-image.disabled {
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    .loading-overlay {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 50%;
+      padding: 4px;
+    }
+
     .placeholder {
       padding: 80px 20px;
       text-align: center;
@@ -56,6 +77,7 @@ import { CommonModule } from '@angular/common';
 export class FrameViewerComponent {
   @Input() imageSrc: string | null = null;
   @Input() interactive = false;
+  @Input() loading = false;
   @Output() frameClick = new EventEmitter<{ x: number; y: number }>();
 
   @ViewChild('frameImg') frameImg!: ElementRef<HTMLImageElement>;

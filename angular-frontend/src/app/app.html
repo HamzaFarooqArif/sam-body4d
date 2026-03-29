@@ -29,7 +29,8 @@
 
     <app-frame-viewer
       [imageSrc]="currentFrameSrc()"
-      [interactive]="session.hasSession()"
+      [interactive]="session.hasSession() && !annotating()"
+      [loading]="annotating()"
       (frameClick)="onFrameClick($event)"
     ></app-frame-viewer>
 
