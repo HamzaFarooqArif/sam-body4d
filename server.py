@@ -65,7 +65,7 @@ def create_app(config_path: str = None):
     api.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -84,14 +84,16 @@ def create_app(config_path: str = None):
         traceback.print_exc()
         return JSONResponse(
             status_code=500,
-            content={"error": str(exc), "type": type(exc).__name__}
+            content={"error": str(exc), "type": type(exc).__name__},
+            headers={"Access-Control-Allow-Origin": "*"},
         )
 
     @api.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         return JSONResponse(
             status_code=422,
-            content={"error": str(exc)}
+            content={"error": str(exc)},
+            headers={"Access-Control-Allow-Origin": "*"},
         )
 
     # ---- Interactive session endpoints ----

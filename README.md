@@ -124,16 +124,56 @@ source /workspace/venv/bin/activate && export PYOPENGL_PLATFORM=egl && nohup pyt
 ```
 
 
-## UI Features
+## Angular Frontend (feature/angular-frontend branch)
 
-- **Video upload** — drag and drop MP4
-- **Frame rate slider** — adjust processing frame rate (10-100%), click Apply to preview
-- **Frame navigation** — scrub through frames with slider
-- **Click-to-annotate** — positive/negative points for target selection
-- **Multi-target support** — annotate multiple people
-- **Mask Generation** — SAM-3 video segmentation with progress bar
-- **4D Generation** — full mesh recovery with adaptive progress tracking
-- **Async processing** — no timeout issues, real-time progress updates
+A modern Angular + Material UI frontend that connects to the same backend API.
+
+### Setup
+```bash
+cd angular-frontend
+npm install
+npx ng serve
+```
+Open http://localhost:4200. Enter your pod API URL in the toolbar and click the connect icon.
+
+### Features
+- **Material UI dark theme** with violet palette
+- **Drag-and-drop video upload** with upload spinner
+- **Local frame scrubbing** — instant frame navigation using HTML5 video + canvas (no API calls)
+- **Click-to-annotate** with loading spinner, duplicate click prevention
+- **Positive/negative point toggle**
+- **Multi-target support** with chip display
+- **Frame rate slider** with Apply — adjusts frame count and maps indices
+- **Mask Generation** with Material progress bar and elapsed time
+- **4D Generation** with progress bar, auto-extracts video from result zip
+- **API URL persistence** in localStorage
+- **Connection status indicator** in toolbar
+- **Clear error messages** (e.g., "Cannot add targets after mask generation")
+
+### Workflow
+1. Upload video (uploaded to pod + loaded locally for scrubbing)
+2. Navigate to frame with slider
+3. Click to annotate person → Add Target (repeat for multiple people)
+4. Click Mask Generation → progress bar → result video
+5. Click 4D Generation → progress bar → result video with meshes
+
+**Note:** All targets must be annotated before Mask Generation. SAM-3 does not allow adding new targets after propagation.
+
+
+## Gradio Frontend
+
+The original Gradio-based UI is still available:
+
+- **Pod Gradio UI** on `:7860` (via `server.py`)
+- **Local Gradio** via `python local_ui.py --mock` or `--api URL`
+
+### Gradio Features
+- Video upload
+- Frame rate slider with Apply
+- Frame navigation
+- Click-to-annotate with real-time masks
+- Mask/4D generation with adaptive progress
+- Async processing via job polling
 
 
 ## Docker (Alternative)
