@@ -1,6 +1,6 @@
 {
   "/api": {
-    "target": "http://localhost:7860",
+    "target": "https://uiamjpz2z7eq3d-7860.proxy.runpod.net",
     "secure": false,
     "changeOrigin": true
   }

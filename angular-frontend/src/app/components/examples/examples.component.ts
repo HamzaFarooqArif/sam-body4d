@@ -16,7 +16,11 @@ import { ApiService } from '../../services/api.service';
         <div class="examples-row">
           @for (ex of examples; track ex.name) {
             <div class="example-card" (click)="onSelect(ex)" [class.loading]="loadingName === ex.name">
-              <video [src]="ex.url" muted preload="metadata" class="example-thumb"></video>
+              @if (ex.thumb) {
+                <img [src]="ex.thumb" class="example-thumb" />
+              } @else {
+                <div class="example-thumb placeholder-thumb"></div>
+              }
               <div class="example-overlay">
                 @if (loadingName === ex.name) {
                   <mat-spinner diameter="24"></mat-spinner>
@@ -75,6 +79,10 @@ import { ApiService } from '../../services/api.service';
       display: block;
     }
 
+    .placeholder-thumb {
+      background: #2a2a4a;
+    }
+
     .example-overlay {
       position: absolute;
       top: 0;
@@ -108,12 +116,21 @@ export class ExamplesComponent implements OnInit {
   @Output() exampleSelected = new EventEmitter<string>(); // emits filename
 
   private api = inject(ApiService);
-  examples: Array<{ name: string; url: string }> = [];
+  examples: Array<{ name: string; url: string; thumb?: string }> = [];
   loadingName: string | null = null;
 
   ngOnInit() {
     this.api.getExamples().subscribe({
-      next: (res) => this.examples = res.examples,
+      next: (res) => {
+        this.examples = res.examples;
+        // Load thumbnails
+        for (const ex of this.examples) {
+          this.api.getExampleThumb(ex.name).subscribe({
+            next: (thumbRes) => ex.thumb = 'data:image/png;base64,' + thumbRes.thumb,
+            error: () => {},
+          });
+        }
+      },
       error: () => {},
     });
   }

@@ -96,6 +96,17 @@ def create_app(config_path: str = None):
             return JSONResponse({"error": "Not found"}, status_code=404)
         return FileResponse(filepath, media_type="video/mp4")
 
+    @api.get("/examples/{filename}/thumb")
+    async def get_example_thumb(filename: str):
+        """Get first frame of example video as base64 image."""
+        filepath = os.path.join(examples_dir, filename)
+        if not os.path.exists(filepath):
+            return JSONResponse({"error": "Not found"}, status_code=404)
+        frame = pipeline.read_frame_at(filepath, 10)
+        if frame is None:
+            return JSONResponse({"error": "Failed to read frame"}, status_code=500)
+        return JSONResponse({"thumb": _image_to_base64(frame)})
+
     @api.post("/init_example")
     async def init_example(filename: str = Form(...)):
         """Initialize session with an example video (no upload needed)."""

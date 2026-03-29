@@ -44,6 +44,10 @@ export class ApiService {
     return this.http.get<{ examples: Array<{ name: string; url: string }> }>(`${this.baseUrl}/examples`);
   }
 
+  getExampleThumb(filename: string): Observable<{ thumb: string }> {
+    return this.http.get<{ thumb: string }>(`${this.baseUrl}/examples/${filename}/thumb`);
+  }
+
   initExample(filename: string): Observable<InitVideoResponse> {
     const formData = new FormData();
     formData.append('filename', filename);
