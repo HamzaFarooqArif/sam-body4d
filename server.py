@@ -64,6 +64,26 @@ def create_app(config_path: str = None):
     def health():
         return {"status": "ready"}
 
+    # ---- Global error handler — prevents server crash on bad requests ----
+    from fastapi import Request
+    from fastapi.exceptions import RequestValidationError
+
+    @api.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(exc), "type": type(exc).__name__}
+        )
+
+    @api.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        return JSONResponse(
+            status_code=422,
+            content={"error": str(exc)}
+        )
+
     # ---- Interactive session endpoints ----
 
     @api.post("/init_video")
