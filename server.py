@@ -27,7 +27,7 @@ sys.path.append(os.path.join(ROOT, 'models', 'sam_3d_body'))
 sys.path.append(os.path.join(ROOT, 'models', 'diffusion_vas'))
 
 import uvicorn
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -70,11 +70,12 @@ def create_app(config_path: str = None):
     )
 
     @api.get("/health")
-    def health():
-        return {"status": "ready"}
+    def health(request: Request):
+        host = request.headers.get("host", "unknown")
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        return {"status": "ready", "server_url": f"{scheme}://{host}"}
 
     # ---- Global error handler — prevents server crash on bad requests ----
-    from fastapi import Request
     from fastapi.exceptions import RequestValidationError
 
     @api.exception_handler(Exception)

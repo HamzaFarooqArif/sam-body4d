@@ -12,6 +12,16 @@
     flex: 1;
   }
 
+  .current-url {
+    color: rgba(255,255,255,0.4);
+    font-size: 11px;
+    margin-right: 8px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .api-input {
     display: flex;
     align-items: center;
@@ -34,6 +44,26 @@
 
     .connected {
       color: #4ade80;
+    }
+
+    .url-input {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 4px;
+      padding: 4px 8px;
+      color: white;
+      font-size: 12px;
+      width: 380px;
+      margin-right: 4px;
+
+      &:focus {
+        outline: none;
+        border-color: rgba(255,255,255,0.5);
+      }
+
+      &::placeholder {
+        color: rgba(255,255,255,0.3);
+      }
     }
 
     .dev-badge {

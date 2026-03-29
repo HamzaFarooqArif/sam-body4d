@@ -40,8 +40,8 @@ export class ApiService {
     return this.baseUrl;
   }
 
-  health(): Observable<{ status: string }> {
-    return this.http.get<{ status: string }>(`${this.baseUrl}/health`);
+  health(): Observable<{ status: string; server_url?: string }> {
+    return this.http.get<{ status: string; server_url?: string }>(`${this.baseUrl}/health`);
   }
 
   initVideo(file: File): Observable<InitVideoResponse> {

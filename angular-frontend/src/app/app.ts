@@ -37,6 +37,8 @@ export class App implements OnInit {
 
   connected = signal(false);
   isLocalDev = window.location.hostname === 'localhost';
+  apiUrlInput = '';
+  currentApiUrl = signal('/api');
   uploading = signal(false);
 
   currentFrameSrc = signal<string | null>(null);
@@ -52,14 +54,42 @@ export class App implements OnInit {
   fourDElapsed = signal('');
 
   ngOnInit() {
+    // Restore saved pod URL for local dev
+    if (this.isLocalDev) {
+      const saved = localStorage.getItem('sam_body4d_pod_url');
+      if (saved) {
+        this.apiUrlInput = saved;
+        const apiUrl = saved.includes('/api') ? saved : saved + '/api';
+        this.api.setBaseUrl(apiUrl);
+        this.currentApiUrl.set(apiUrl);
+      }
+    }
+    this.checkConnection();
+  }
+
+  applyApiUrl() {
+    const url = this.apiUrlInput.trim().replace(/\/$/, '');
+    if (url) {
+      const apiUrl = url.includes('/api') ? url : url + '/api';
+      this.api.setBaseUrl(apiUrl);
+      this.currentApiUrl.set(apiUrl);
+      localStorage.setItem('sam_body4d_pod_url', url);
+    } else {
+      this.api.setBaseUrl('/api');
+      this.currentApiUrl.set('/api (proxy)');
+      localStorage.removeItem('sam_body4d_pod_url');
+    }
     this.checkConnection();
   }
 
   checkConnection() {
     this.api.health().subscribe({
-      next: () => {
+      next: (res) => {
         this.connected.set(true);
-        this.snackBar.open('Connected to server', '', { duration: 2000 });
+        if (res.server_url) {
+          this.currentApiUrl.set(res.server_url);
+        }
+        this.snackBar.open('Connected to ' + (res.server_url || 'server'), '', { duration: 2000 });
       },
       error: () => {
         this.connected.set(false);

@@ -4,8 +4,14 @@
   <span class="spacer"></span>
   @if (isLocalDev) {
     <span class="dev-badge">DEV</span>
+    <input
+      [(ngModel)]="apiUrlInput"
+      [placeholder]="apiUrlInput ? '' : (connected() ? 'Connected to ' + currentApiUrl() : 'Paste pod URL (e.g. https://xxx-7860.proxy.runpod.net)')"
+      class="url-input"
+      (keyup.enter)="applyApiUrl()"
+    />
   }
-  <mat-icon [class.connected]="connected()" style="cursor: pointer" (click)="checkConnection()">
+  <mat-icon [class.connected]="connected()" style="cursor: pointer" (click)="isLocalDev ? applyApiUrl() : checkConnection()">
     {{ connected() ? 'cloud_done' : 'cloud_off' }}
   </mat-icon>
 </mat-toolbar>
