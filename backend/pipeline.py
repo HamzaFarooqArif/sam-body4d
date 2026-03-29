@@ -691,8 +691,10 @@ class Pipeline:
                     id_current=id_current,
                 )
 
+        frame_step = runtime.get('frame_step', 1)
+        output_fps = runtime['video_fps'] / frame_step if frame_step > 1 else runtime['video_fps']
         out_4d_path = os.path.join(output_dir, f"4d_{time.time():.0f}.mp4")
-        jpg_folder_to_mp4(f"{output_dir}/rendered_frames", out_4d_path, fps=runtime['video_fps'])
+        jpg_folder_to_mp4(f"{output_dir}/rendered_frames", out_4d_path, fps=output_fps)
         return out_4d_path
 
     def process_video_auto(self, video_path: str, output_dir: str = None):
