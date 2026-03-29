@@ -271,7 +271,8 @@ class Pipeline:
             if progress_cb:
                 progress_cb(0.7 * (frame_idx + 1) / total_est)
 
-        # Phase 2: Save frames (70% - 100%)
+        # Phase 2: Save frames (70% - 100%) — only every frame_step'th frame
+        frame_step = runtime.get('frame_step', 1)
         out_h = runtime['inference_state']['video_height']
         out_w = runtime['inference_state']['video_width']
         img_to_video = []
@@ -279,10 +280,13 @@ class Pipeline:
         IMAGE_PATH = os.path.join(output_dir, 'images')
         MASKS_PATH = os.path.join(output_dir, 'masks')
 
-        total_frames = len(video_segments)
-        for out_frame_idx in range(total_frames):
+        all_frame_indices = sorted(video_segments.keys())
+        selected_indices = all_frame_indices[::frame_step]
+        total_frames = len(selected_indices)
+        save_idx = 0
+        for out_frame_idx in selected_indices:
             if progress_cb:
-                progress_cb(0.7 + 0.3 * out_frame_idx / total_frames)
+                progress_cb(0.7 + 0.3 * save_idx / total_frames)
             img = runtime['inference_state']['images'][out_frame_idx].detach().float().cpu()
             img = (img + 1) / 2
             img = img.clamp(0, 1)
@@ -302,11 +306,14 @@ class Pipeline:
 
             msk_pil = Image.fromarray(msk).convert('P')
             msk_pil.putpalette(DAVIS_PALETTE)
-            img_pil.save(os.path.join(IMAGE_PATH, f"{out_frame_idx:08d}.jpg"))
-            msk_pil.save(os.path.join(MASKS_PATH, f"{out_frame_idx:08d}.png"))
+            img_pil.save(os.path.join(IMAGE_PATH, f"{save_idx:08d}.jpg"))
+            msk_pil.save(os.path.join(MASKS_PATH, f"{save_idx:08d}.png"))
+            save_idx += 1
 
+        # Adjust fps for reduced framerate output
+        output_fps = runtime['video_fps'] / frame_step if frame_step > 1 else runtime['video_fps']
         out_video_path = os.path.join(output_dir, f"video_mask_{time.time():.0f}.mp4")
-        images_to_mp4(img_to_video, out_video_path, fps=runtime['video_fps'])
+        images_to_mp4(img_to_video, out_video_path, fps=output_fps)
         return out_video_path
 
     def _mask_completion_and_iou_init(self, pred_amodal_masks, pred_res, obj_id, batch_masks, i, W, H, output_dir):

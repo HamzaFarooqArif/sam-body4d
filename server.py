@@ -213,11 +213,14 @@ def create_app(config_path: str = None):
             traceback.print_exc()
 
     @api.post("/session_generate_masks_async")
-    async def session_generate_masks_async(session_id: str = Form(...)):
+    async def session_generate_masks_async(session_id: str = Form(...), frame_step: int = Form(1)):
         """Start mask generation in background. Returns job_id."""
         session = sessions.get(session_id)
         if not session:
             return JSONResponse({"error": "Invalid session_id"}, status_code=404)
+
+        # Store frame_step in runtime so pipeline can use it
+        session['runtime']['frame_step'] = frame_step
 
         job_id = _gen_id()
         jobs[job_id] = {'status': 'queued', 'progress': 0, 'result_path': None, 'error': None}
@@ -234,11 +237,13 @@ def create_app(config_path: str = None):
         return JSONResponse({"job_id": job_id})
 
     @api.post("/session_generate_4d_async")
-    async def session_generate_4d_async(session_id: str = Form(...)):
+    async def session_generate_4d_async(session_id: str = Form(...), frame_step: int = Form(1)):
         """Start 4D reconstruction in background. Returns job_id."""
         session = sessions.get(session_id)
         if not session:
             return JSONResponse({"error": "Invalid session_id"}, status_code=404)
+
+        session['runtime']['frame_step'] = frame_step
 
         job_id = _gen_id()
         jobs[job_id] = {'status': 'queued', 'progress': 0, 'result_path': None, 'error': None}

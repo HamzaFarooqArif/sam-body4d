@@ -210,33 +210,15 @@ class RemotePipeline:
         return out_path
 
     def generate_masks(self, runtime, output_dir):
-        """Upload working video to pod, re-init session, start mask generation."""
+        """Start mask generation async with frame_step."""
         import requests
         if not self._session_id:
             raise RuntimeError("No session")
 
-        # Re-upload the working video (may be reduced framerate) and re-init session
-        video_path = runtime.get('_video_path', '')
-        if video_path and os.path.exists(video_path):
-            print(f"[RemotePipeline] Uploading working video to pod...")
-            try:
-                with open(video_path, 'rb') as f:
-                    r = requests.post(
-                        f"{self.api_url}/init_video",
-                        files={"video": (os.path.basename(video_path), f, "video/mp4")},
-                        timeout=300,
-                    )
-                if r.status_code == 200:
-                    data = r.json()
-                    self._session_id = data["session_id"]
-                    print(f"[RemotePipeline] Session re-created: {self._session_id}")
-                else:
-                    print(f"[RemotePipeline] Warning: re-upload failed ({r.status_code}), using existing session")
-            except Exception as e:
-                print(f"[RemotePipeline] Warning: re-upload failed ({e}), using existing session")
-
+        frame_step = runtime.get('frame_step', 1)
         r = requests.post(f"{self.api_url}/session_generate_masks_async", data={
             "session_id": self._session_id,
+            "frame_step": frame_step,
         }, timeout=30)
         if r.status_code != 200:
             raise RuntimeError(f"API error: {r.status_code} — {r.text}")
@@ -256,8 +238,10 @@ class RemotePipeline:
         if not self._session_id:
             raise RuntimeError("No session")
 
+        frame_step = runtime.get('frame_step', 1)
         r = requests.post(f"{self.api_url}/session_generate_4d_async", data={
             "session_id": self._session_id,
+            "frame_step": frame_step,
         }, timeout=30)
         if r.status_code != 200:
             raise RuntimeError(f"API error: {r.status_code} — {r.text}")
