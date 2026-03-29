@@ -32,14 +32,21 @@ echo "[OK]  System dependencies installed"
 
 # ---- Step 2: Python 3.12 + venv ----
 echo "[2/6] Setting up Python 3.12..."
-if [ ! -f "${VENV}/bin/activate" ]; then
+# Always ensure Python 3.12 is installed (container disk gets wiped on restart)
+if ! command -v python3.12 &> /dev/null; then
     apt-get install -y -qq python3.12 python3.12-venv python3.12-dev > /dev/null 2>&1
+fi
+
+# Check if venv exists AND works (python binary might be dead after restart)
+if [ -f "${VENV}/bin/activate" ] && "${VENV}/bin/python" --version &> /dev/null; then
+    source "${VENV}/bin/activate"
+    echo "  (venv already exists, reusing)"
+else
+    echo "  (creating fresh venv)"
+    rm -rf "${VENV}"
     python3.12 -m venv "${VENV}"
     source "${VENV}/bin/activate"
     pip install --upgrade pip setuptools wheel -q
-else
-    source "${VENV}/bin/activate"
-    echo "  (venv already exists, reusing)"
 fi
 echo "[OK]  Python 3.12 venv ready"
 
