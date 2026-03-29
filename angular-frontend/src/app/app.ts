@@ -10,6 +10,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { ApiService, JobStatusResponse } from './services/api.service';
 import { SessionService } from './services/session.service';
+import { FrameExtractorService } from './services/frame-extractor.service';
 import { VideoUploadComponent } from './components/video-upload/video-upload.component';
 import { FrameViewerComponent } from './components/frame-viewer/frame-viewer.component';
 import { ControlsComponent } from './components/controls/controls.component';
@@ -29,7 +30,9 @@ import { ResultsComponent } from './components/results/results.component';
 export class App implements OnInit {
   private api = inject(ApiService);
   private snackBar = inject(MatSnackBar);
+  private frameExtractor = inject(FrameExtractorService);
   session = inject(SessionService);
+  private currentVideoFile: File | null = null;
 
   apiUrl = 'http://localhost:8000';
   connected = signal(false);
@@ -74,15 +77,20 @@ export class App implements OnInit {
     this.session.reset();
     this.maskVideoUrl.set(null);
     this.fourDVideoUrl.set(null);
+    this.currentVideoFile = file;
 
     this.api.initVideo(file).subscribe({
-      next: (res) => {
+      next: async (res) => {
         this.session.sessionId.set(res.session_id);
         this.session.fps.set(res.fps);
         this.session.totalFrames.set(res.total_frames);
         this.session.videoWidth.set(res.width);
         this.session.videoHeight.set(res.height);
         this.currentFrameSrc.set('data:image/png;base64,' + res.first_frame);
+
+        // Load video locally for fast frame scrubbing
+        await this.frameExtractor.loadVideo(file, res.fps);
+
         this.uploading.set(false);
         this.snackBar.open(`Video loaded: ${res.total_frames} frames`, '', { duration: 2000 });
       },
@@ -93,14 +101,21 @@ export class App implements OnInit {
     });
   }
 
-  onFrameChange(idx: number) {
-    const sid = this.session.sessionId();
-    if (!sid) return;
+  async onFrameChange(idx: number) {
     this.session.currentFrameIdx.set(idx);
-    this.api.getFrame(sid, idx).subscribe({
-      next: (res) => this.currentFrameSrc.set('data:image/png;base64,' + res.frame),
-      error: () => {},
-    });
+    try {
+      const dataUrl = await this.frameExtractor.getFrame(idx);
+      this.currentFrameSrc.set(dataUrl);
+    } catch {
+      // Fallback to API if local extraction fails
+      const sid = this.session.sessionId();
+      if (sid) {
+        this.api.getFrame(sid, idx).subscribe({
+          next: (res) => this.currentFrameSrc.set('data:image/png;base64,' + res.frame),
+          error: () => {},
+        });
+      }
+    }
   }
 
   onFrameClick(coords: { x: number; y: number }) {
