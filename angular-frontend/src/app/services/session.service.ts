@@ -12,6 +12,7 @@ export class SessionService {
   readonly pointType = signal<'positive' | 'negative'>('positive');
   readonly targets = signal<string[]>([]);
   readonly currentTargetId = signal<number>(1);
+  readonly annotationFrameIdx = signal<number | null>(null);
 
   readonly hasSession = computed(() => this.sessionId() !== null);
   readonly effectiveFrames = computed(() => Math.ceil(this.totalFrames() / this.frameStep()));
@@ -27,5 +28,6 @@ export class SessionService {
     this.pointType.set('positive');
     this.targets.set([]);
     this.currentTargetId.set(1);
+    this.annotationFrameIdx.set(null);
   }
 }

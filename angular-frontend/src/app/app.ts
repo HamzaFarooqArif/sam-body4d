@@ -151,12 +151,25 @@ export class App implements OnInit {
     const sid = this.session.sessionId();
     if (!sid || this.annotating()) return;
 
+    const frameIdx = this.session.currentFrameIdx();
+    const lockedFrame = this.session.annotationFrameIdx();
+
+    // Lock annotations to the first frame where a point was placed
+    if (lockedFrame !== null && frameIdx !== lockedFrame) {
+      this.snackBar.open(`All annotations must be on frame ${lockedFrame}. Navigate there or upload video again.`, '', { duration: 4000 });
+      return;
+    }
+
     this.annotating.set(true);
     this.cdr.detectChanges();
 
+    // Lock to this frame on first click
+    if (lockedFrame === null) {
+      this.session.annotationFrameIdx.set(frameIdx);
+    }
+
     const pointType = this.session.pointType();
     const targetId = this.session.currentTargetId();
-    const frameIdx = this.session.currentFrameIdx();
     const originalIdx = frameIdx * this.session.frameStep();
 
     this.api.addPoint(
