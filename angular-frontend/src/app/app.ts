@@ -212,17 +212,11 @@ export class App implements OnInit {
   }
 
   onAddTarget() {
-    const sid = this.session.sessionId();
-    if (!sid) return;
-
-    this.api.addTarget(sid).subscribe({
-      next: (res) => {
-        this.session.targets.update(t => [...t, `Target ${t.length + 1}`]);
-        this.session.currentTargetId.set(res.current_id);
-        this.snackBar.open('Target added', '', { duration: 1500 });
-      },
-      error: () => {},
-    });
+    // Local only — set_points handles target grouping on the pod
+    const currentId = this.session.currentTargetId();
+    this.session.targets.update(t => [...t, `Target ${currentId}`]);
+    this.session.currentTargetId.set(currentId + 1);
+    this.snackBar.open(`Target ${currentId} added. Click on next person.`, '', { duration: 2000 });
   }
 
   async onApplyFrameRate(pct: number) {
