@@ -151,72 +151,56 @@ export class App implements OnInit {
     const sid = this.session.sessionId();
     if (!sid || this.annotating()) return;
 
-    // Add new marker locally
-    const newMarker: PointMarker = {
-      x: coords.x,
-      y: coords.y,
-      type: this.session.pointType(),
-      targetId: this.session.currentTargetId(),
-      frameIdx: this.session.currentFrameIdx(),
-    };
-    const updated = [...this.pointMarkers(), newMarker];
-    this.pointMarkers.set(updated);
-    this.syncPointsWithPod(updated);
-  }
-
-  onMarkerRemove(markerIdx: number) {
-    const sid = this.session.sessionId();
-    if (!sid || this.annotating()) return;
-
-    const updated = this.pointMarkers().filter((_, i) => i !== markerIdx);
-    this.pointMarkers.set(updated);
-
-    if (updated.length === 0) {
-      this.onFrameChange(this.session.currentFrameIdx());
-      return;
-    }
-    this.syncPointsWithPod(updated);
-  }
-
-  private syncPointsWithPod(markers: PointMarker[]) {
-    const sid = this.session.sessionId();
-    if (!sid) return;
-
     this.annotating.set(true);
     this.cdr.detectChanges();
 
-    const points = markers.map(m => ({
-      frame_idx: m.frameIdx * this.session.frameStep(),
-      x: Math.round(m.x),
-      y: Math.round(m.y),
-      type: m.type,
-      target_id: m.targetId,
-      width: this.session.videoWidth(),
-      height: this.session.videoHeight(),
-    }));
+    const pointType = this.session.pointType();
+    const targetId = this.session.currentTargetId();
+    const frameIdx = this.session.currentFrameIdx();
+    const originalIdx = frameIdx * this.session.frameStep();
 
-    this.api.setPoints(sid, points).subscribe({
+    this.api.addPoint(
+      sid, originalIdx, coords.x, coords.y, pointType,
+      this.session.videoWidth(), this.session.videoHeight(),
+    ).subscribe({
       next: (res) => {
-        if (res.image) {
-          this.currentFrameSrc.set('data:image/png;base64,' + res.image);
-        }
+        this.currentFrameSrc.set('data:image/png;base64,' + res.image);
+        this.pointMarkers.update(markers => [
+          ...markers,
+          { x: coords.x, y: coords.y, type: pointType, targetId, frameIdx }
+        ]);
         this.annotating.set(false);
         this.cdr.detectChanges();
       },
       error: (err) => {
-        this.snackBar.open('Annotation failed: ' + (err.error?.error || ''), '', { duration: 3000 });
+        const msg = err.error?.error || err.message || '';
+        if (msg.includes('Cannot add new object') || msg.includes('after tracking')) {
+          this.snackBar.open('Cannot add targets after mask generation. Upload video again to start over.', '', { duration: 5000 });
+        } else {
+          this.snackBar.open('Annotation failed: ' + msg, '', { duration: 3000 });
+        }
         this.annotating.set(false);
         this.cdr.detectChanges();
       },
     });
   }
 
+  onMarkerRemove(_markerIdx: number) {
+    this.snackBar.open('Point removal not supported. Upload video again to start over.', '', { duration: 3000 });
+  }
+
   onAddTarget() {
-    // Local only — set_points handles target grouping on the pod
-    const currentId = this.session.currentTargetId();
-    this.session.targets.update(t => [...t, `Target ${currentId}`]);
-    this.session.currentTargetId.set(currentId + 1);
-    this.snackBar.open(`Target ${currentId} added. Click on next person.`, '', { duration: 2000 });
+    const sid = this.session.sessionId();
+    if (!sid) return;
+
+    this.api.addTarget(sid).subscribe({
+      next: (res) => {
+        this.session.targets.update(t => [...t, `Target ${t.length + 1}`]);
+        this.session.currentTargetId.set(res.current_id);
+        this.snackBar.open('Target added', '', { duration: 1500 });
+      },
+      error: () => {},
+    });
   }
 
   async onApplyFrameRate(pct: number) {
