@@ -36,6 +36,7 @@ export class App implements OnInit {
   private currentVideoFile: File | null = null;
 
   connected = signal(false);
+  isLocalDev = window.location.hostname === 'localhost';
   uploading = signal(false);
 
   currentFrameSrc = signal<string | null>(null);

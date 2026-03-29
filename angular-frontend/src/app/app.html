@@ -2,6 +2,9 @@
   <mat-icon>view_in_ar</mat-icon>
   <span class="title">SAM-Body4D</span>
   <span class="spacer"></span>
+  @if (isLocalDev) {
+    <span class="dev-badge">DEV</span>
+  }
   <mat-icon [class.connected]="connected()" style="cursor: pointer" (click)="checkConnection()">
     {{ connected() ? 'cloud_done' : 'cloud_off' }}
   </mat-icon>
