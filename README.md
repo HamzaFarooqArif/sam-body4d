@@ -37,7 +37,7 @@ By leveraging **pixel-level human continuity** from promptable video segmentatio
 2. Open the web terminal and run:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/feature/frontend-backend-split/setup_runpod.sh | GITHUB_BRANCH=feature/frontend-backend-split bash
+curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/feature/angular-frontend/setup_runpod.sh | GITHUB_BRANCH=feature/angular-frontend bash
 ```
 
 This automatically installs everything and starts the server (~10-30 min first time).
@@ -86,38 +86,35 @@ server.py (pod entry point — one process, one GPU load)
 
 | File | Where | What it does |
 |------|-------|-------------|
-| `server.py` | Pod | Loads models once, serves UI (:7860) + API (:8000) |
-| `local_ui.py --mock` | Your PC | Free dev with fake data, no GPU needed |
-| `local_ui.py --api URL` | Your PC | Local UI talking to pod API for real results |
-| `app.py` | Anywhere | Original all-in-one (still works as fallback) |
+| `server.py` | Pod | Loads models, serves Angular UI (:7860) + API (:8000) |
 | `start.sh` | Pod | Auto-fixes broken venv + starts server |
 | `setup_runpod.sh` | Pod | Full first-time setup |
+| `angular-frontend/` | Your PC | Angular source for local dev (`npx ng serve`) |
 
 
 ## Development Modes
 
-### Mode 1: Free local dev (no pod, no cost)
+### Mode 1: Local Angular dev (no pod needed for UI work)
 ```bash
-cd sam-body4d
-python local_ui.py --mock
+cd angular-frontend
+npm install
+npx ng serve
 ```
-Full UI with fake model outputs. Iterate on UI changes, video preprocessing, frame rate control — all free, no GPU needed.
+Develop UI at http://localhost:4200. Point to pod API URL for real results, or just work on UI layout/styling without a pod.
 
-### Mode 2: Local dev with real results (pod running)
-```bash
-python local_ui.py --api https://your-pod-id-8000.proxy.runpod.net
-```
-Your local UI sends clicks and videos to the pod. Real SAM-3 masks, real 4D meshes. Uses async polling — no Cloudflare timeout issues.
-
-### Mode 3: Production (pod serves everything)
-Pod runs `server.py` via the setup script. Users access Gradio on `:7860`. You can simultaneously develop against `:8000` from your PC.
+### Mode 2: Production (pod serves everything)
+Pod runs `server.py` — Angular UI on `:7860`, API on `:8000`. Users just open the pod URL.
 
 ### Deploying code changes
 ```bash
-# On your PC
-git push
+# Rebuild Angular
+cd angular-frontend && npx ng build --configuration=production
+cp -r dist/angular-frontend/browser ../static
 
-# On pod (server keeps running, no reinstall needed)
+# Commit and push
+git add static/ && git commit -m "rebuild frontend" && git push
+
+# On pod — pull and restart
 cd /workspace/sam-body4d && git pull
 pkill -9 -f server.py
 source /workspace/venv/bin/activate && export PYOPENGL_PLATFORM=egl && nohup python server.py > /workspace/server.log 2>&1 &
@@ -160,20 +157,25 @@ Open http://localhost:4200. Enter your pod API URL in the toolbar and click the 
 **Note:** All targets must be annotated before Mask Generation. SAM-3 does not allow adding new targets after propagation.
 
 
-## Gradio Frontend
+## Local Angular Development
 
-The original Gradio-based UI is still available:
+To modify the Angular frontend:
 
-- **Pod Gradio UI** on `:7860` (via `server.py`)
-- **Local Gradio** via `python local_ui.py --mock` or `--api URL`
+```bash
+cd angular-frontend
+npm install
+npx ng serve
+```
 
-### Gradio Features
-- Video upload
-- Frame rate slider with Apply
-- Frame navigation
-- Click-to-annotate with real-time masks
-- Mask/4D generation with adaptive progress
-- Async processing via job polling
+Open http://localhost:4200. It auto-detects RunPod API URL or falls back to localhost:8000.
+
+After changes, rebuild and copy to static/:
+```bash
+npx ng build --configuration=production
+cp -r dist/angular-frontend/browser ../static
+```
+
+Commit the updated `static/` folder and push.
 
 
 ## Docker (Alternative)
@@ -256,16 +258,13 @@ For detailed profiling, see [resources.md](assets/doc/resources.md).
 
 ```
 sam-body4d/
-├── server.py              — pod entry point (Gradio + API, one process)
-├── local_ui.py            — PC entry point (--mock or --api)
-├── app.py                 — original all-in-one (still works)
+├── server.py              — pod entry point (Angular UI :7860 + API :8000)
 ├── start.sh               — pod auto-start script
 ├── setup_runpod.sh        — full first-time RunPod setup
+├── static/                — pre-built Angular app (served on :7860)
+├── angular-frontend/      — Angular source code (for development)
 ├── backend/
-│   ├── pipeline.py        — model loading + processing logic
-│   └── mock.py            — fake pipeline for free local dev
-├── frontend/
-│   └── ui.py              — shared Gradio UI definition
+│   └── pipeline.py        — model loading + processing logic
 ├── models/
 │   ├── sam3/              — SAM-3 video segmentation
 │   ├── sam_3d_body/       — SAM-3D-Body mesh recovery

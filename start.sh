@@ -19,5 +19,5 @@ else
     # Venv broken or missing — run full setup
     echo "[start.sh] Venv broken or missing. Running full setup..."
     rm -rf "${VENV}"
-    curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/feature/frontend-backend-split/setup_runpod.sh | GITHUB_BRANCH=feature/frontend-backend-split bash
+    curl -sL https://raw.githubusercontent.com/HamzaFarooqArif/sam-body4d/feature/angular-frontend/setup_runpod.sh | GITHUB_BRANCH=feature/angular-frontend bash
 fi

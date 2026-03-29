@@ -30,7 +30,15 @@ export interface JobStatusResponse {
 export class ApiService {
   private baseUrl = 'http://localhost:8000';
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) {
+    // Auto-detect API URL when running on RunPod
+    // UI is on :7860, API is on :8000 — same host, different port
+    const host = window.location.hostname;
+    if (host.includes('proxy.runpod.net')) {
+      // RunPod proxy URL: replace -7860. with -8000.
+      this.baseUrl = window.location.origin.replace('-7860.', '-8000.');
+    }
+  }
 
   setBaseUrl(url: string) {
     this.baseUrl = url.replace(/\/$/, '');

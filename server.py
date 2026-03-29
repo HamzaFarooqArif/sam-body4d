@@ -2,8 +2,8 @@
 server.py — Single entry point for RunPod pod.
 
 Loads models once, serves:
-  - Gradio Web UI on port 7860 (for users)
-  - FastAPI API on port 8000 (for local_ui.py development)
+  - Angular UI on port 7860 (static files)
+  - FastAPI API on port 8000 (processing endpoints)
 
 Usage:
   python server.py
@@ -23,17 +23,16 @@ import uuid
 import numpy as np
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-os.environ["GRADIO_TEMP_DIR"] = os.path.join(ROOT, "gradio_tmp")
 sys.path.append(os.path.join(ROOT, 'models', 'sam_3d_body'))
 sys.path.append(os.path.join(ROOT, 'models', 'diffusion_vas'))
 
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
 from backend.pipeline import Pipeline
-from frontend.ui import build_ui
 
 
 def _gen_id():
@@ -371,34 +370,51 @@ def create_app(config_path: str = None):
         finally:
             os.unlink(tmp_path)
 
-    # ---- Gradio UI (on port 7860 via same process) ----
-    demo = build_ui(pipeline)
+    return api
 
-    return api, demo
+
+def create_ui_app():
+    """Create a simple static file server for the Angular frontend."""
+    from fastapi import FastAPI as FA
+    ui = FA()
+
+    static_dir = os.path.join(ROOT, "static")
+    if os.path.isdir(static_dir):
+        # Serve index.html for any non-file route (Angular SPA routing)
+        @ui.get("/")
+        async def root():
+            return FileResponse(os.path.join(static_dir, "index.html"))
+
+        ui.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+    else:
+        @ui.get("/")
+        async def root():
+            return HTMLResponse("<h1>SAM-Body4D</h1><p>Static files not found. Build Angular app first.</p>")
+
+    return ui
 
 
 def main():
     parser = argparse.ArgumentParser(description="SAM-Body4D Server")
     parser.add_argument("--config", type=str, default=None, help="Path to body4d.yaml")
-    parser.add_argument("--ui-port", type=int, default=7860, help="Gradio UI port")
+    parser.add_argument("--ui-port", type=int, default=7860, help="Angular UI port")
     parser.add_argument("--api-port", type=int, default=8000, help="API port")
     args = parser.parse_args()
 
-    api, demo = create_app(args.config)
+    api = create_app(args.config)
+    ui = create_ui_app()
 
     import threading
-    gradio_thread = threading.Thread(
-        target=lambda: demo.launch(
-            server_name="0.0.0.0",
-            server_port=args.ui_port,
-            share=False,
-            prevent_thread_lock=True,
-        ),
+
+    # Start Angular UI server
+    ui_thread = threading.Thread(
+        target=lambda: uvicorn.run(ui, host="0.0.0.0", port=args.ui_port),
         daemon=True,
     )
-    gradio_thread.start()
-    print(f"Gradio UI starting on port {args.ui_port}...")
+    ui_thread.start()
+    print(f"Angular UI serving on port {args.ui_port}...")
 
+    # Start API server (blocks main thread)
     print(f"API starting on port {args.api_port}...")
     uvicorn.run(api, host="0.0.0.0", port=args.api_port)
 
