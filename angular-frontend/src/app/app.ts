@@ -12,7 +12,7 @@ import { ApiService, JobStatusResponse } from './services/api.service';
 import { SessionService } from './services/session.service';
 import { FrameExtractorService } from './services/frame-extractor.service';
 import { VideoUploadComponent } from './components/video-upload/video-upload.component';
-import { FrameViewerComponent } from './components/frame-viewer/frame-viewer.component';
+import { FrameViewerComponent, PointMarker } from './components/frame-viewer/frame-viewer.component';
 import { ControlsComponent } from './components/controls/controls.component';
 import { ResultsComponent } from './components/results/results.component';
 
@@ -42,6 +42,7 @@ export class App implements OnInit {
   uploading = signal(false);
 
   currentFrameSrc = signal<string | null>(null);
+  pointMarkers = signal<PointMarker[]>([]);
   annotating = signal(false);
   maskVideoUrl = signal<string | null>(null);
   fourDVideoUrl = signal<string | null>(null);
@@ -103,6 +104,7 @@ export class App implements OnInit {
     this.session.reset();
     this.maskVideoUrl.set(null);
     this.fourDVideoUrl.set(null);
+    this.pointMarkers.set([]);
     this.currentVideoFile = file;
 
     this.api.initVideo(file).subscribe({
@@ -153,17 +155,24 @@ export class App implements OnInit {
     this.cdr.detectChanges();
     const originalIdx = this.session.currentFrameIdx() * this.session.frameStep();
 
+    const pointType = this.session.pointType();
+    const targetId = this.session.currentTargetId();
+
     this.api.addPoint(
       sid,
       originalIdx,
       coords.x,
       coords.y,
-      this.session.pointType(),
+      pointType,
       this.session.videoWidth(),
       this.session.videoHeight(),
     ).subscribe({
       next: (res) => {
         this.currentFrameSrc.set('data:image/png;base64,' + res.image);
+        this.pointMarkers.update(markers => [
+          ...markers,
+          { x: coords.x, y: coords.y, type: pointType, targetId }
+        ]);
         this.annotating.set(false);
         this.cdr.detectChanges();
       },
@@ -174,6 +183,50 @@ export class App implements OnInit {
         } else {
           this.snackBar.open('Annotation failed: ' + msg, '', { duration: 3000 });
         }
+        this.annotating.set(false);
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  onMarkerRemove(markerIdx: number) {
+    const sid = this.session.sessionId();
+    if (!sid || this.annotating()) return;
+
+    // Remove marker locally
+    const remaining = this.pointMarkers().filter((_, i) => i !== markerIdx);
+    this.pointMarkers.set(remaining);
+
+    if (remaining.length === 0) {
+      // No points left — just reset session frame
+      this.onFrameChange(this.session.currentFrameIdx());
+      return;
+    }
+
+    // Re-send all remaining points to pod
+    this.annotating.set(true);
+    this.cdr.detectChanges();
+
+    const points = remaining.map(m => ({
+      frame_idx: this.session.currentFrameIdx() * this.session.frameStep(),
+      x: Math.round(m.x),
+      y: Math.round(m.y),
+      type: m.type,
+      target_id: m.targetId,
+      width: this.session.videoWidth(),
+      height: this.session.videoHeight(),
+    }));
+
+    this.api.setPoints(sid, points).subscribe({
+      next: (res) => {
+        if (res.image) {
+          this.currentFrameSrc.set('data:image/png;base64,' + res.image);
+        }
+        this.annotating.set(false);
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.snackBar.open('Failed to update points: ' + (err.error?.error || ''), '', { duration: 3000 });
         this.annotating.set(false);
         this.cdr.detectChanges();
       },

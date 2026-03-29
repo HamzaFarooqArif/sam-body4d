@@ -30,7 +30,9 @@
       [imageSrc]="currentFrameSrc()"
       [interactive]="session.hasSession() && !annotating()"
       [loading]="annotating()"
+      [markers]="pointMarkers()"
       (frameClick)="onFrameClick($event)"
+      (markerRemove)="onMarkerRemove($event)"
     ></app-frame-viewer>
 
     <app-controls

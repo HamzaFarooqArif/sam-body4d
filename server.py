@@ -166,6 +166,48 @@ def create_app(config_path: str = None):
 
         return JSONResponse({"image": _image_to_base64(painted)})
 
+    @api.post("/set_points")
+    async def set_points(request: Request):
+        """Reset session points and set all points at once. Supports multiple targets."""
+        body = await request.json()
+        session_id = body.get('session_id')
+        points = body.get('points', [])
+
+        session = sessions.get(session_id)
+        if not session:
+            return JSONResponse({"error": "Invalid session_id"}, status_code=404)
+
+        # Re-init SAM-3 state with same video
+        video_path = session['video_path']
+        new_runtime = pipeline.init_video_state(video_path)
+        new_runtime['video_fps'] = session['runtime'].get('video_fps', 30)
+        new_runtime['frame_step'] = session['runtime'].get('frame_step', 1)
+
+        # Group points by target_id
+        from collections import defaultdict
+        targets = defaultdict(list)
+        for p in points:
+            targets[p['target_id']].append(p)
+
+        result_image = None
+        for target_id in sorted(targets.keys()):
+            target_points = targets[target_id]
+            for p in target_points:
+                result_image, new_runtime = pipeline.add_point(
+                    new_runtime, video_path,
+                    p['frame_idx'], p['x'], p['y'], p['type'],
+                    p['width'], p['height'],
+                )
+            # Finalize each target
+            new_runtime = pipeline.add_target(new_runtime)
+
+        session['runtime'] = new_runtime
+
+        if result_image is None:
+            return JSONResponse({"image": None})
+
+        return JSONResponse({"image": _image_to_base64(result_image)})
+
     @api.post("/add_target")
     async def add_target(session_id: str = Form(...)):
         """Finalize current clicks as a target."""

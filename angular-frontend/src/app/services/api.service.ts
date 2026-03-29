@@ -77,6 +77,16 @@ export class ApiService {
     return this.http.post<AddPointResponse>(`${this.baseUrl}/add_point`, formData);
   }
 
+  setPoints(
+    sessionId: string,
+    points: Array<{ frame_idx: number; x: number; y: number; type: string; target_id: number; width: number; height: number }>,
+  ): Observable<{ image: string | null }> {
+    return this.http.post<{ image: string | null }>(`${this.baseUrl}/set_points`, {
+      session_id: sessionId,
+      points,
+    });
+  }
+
   addTarget(sessionId: string): Observable<AddTargetResponse> {
     const formData = new FormData();
     formData.append('session_id', sessionId);
