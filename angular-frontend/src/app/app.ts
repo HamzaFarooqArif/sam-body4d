@@ -1,4 +1,4 @@
-import { Component, signal, inject, OnInit } from '@angular/core';
+import { Component, signal, inject, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -31,6 +31,7 @@ export class App implements OnInit {
   private api = inject(ApiService);
   private snackBar = inject(MatSnackBar);
   private frameExtractor = inject(FrameExtractorService);
+  private cdr = inject(ChangeDetectorRef);
   session = inject(SessionService);
   private currentVideoFile: File | null = null;
 
@@ -125,6 +126,7 @@ export class App implements OnInit {
     if (!sid || this.annotating()) return;
 
     this.annotating.set(true);
+    this.cdr.detectChanges();
     const originalIdx = this.session.currentFrameIdx() * this.session.frameStep();
 
     this.api.addPoint(
@@ -139,10 +141,17 @@ export class App implements OnInit {
       next: (res) => {
         this.currentFrameSrc.set('data:image/png;base64,' + res.image);
         this.annotating.set(false);
+        this.cdr.detectChanges();
       },
       error: (err) => {
-        this.snackBar.open('Annotation failed: ' + (err.error?.error || ''), '', { duration: 3000 });
+        const msg = err.error?.error || err.message || '';
+        if (msg.includes('Cannot add new object') || msg.includes('after tracking')) {
+          this.snackBar.open('Cannot add targets after mask generation. Upload video again to start over.', '', { duration: 5000 });
+        } else {
+          this.snackBar.open('Annotation failed: ' + msg, '', { duration: 3000 });
+        }
         this.annotating.set(false);
+        this.cdr.detectChanges();
       },
     });
   }
