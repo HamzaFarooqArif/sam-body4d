@@ -1,10 +1,9 @@
-import { Component, Input, Output, EventEmitter, OnInit, inject } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, inject, ChangeDetectorRef } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { ApiService } from '../../services/api.service';
-
 @Component({
   selector: 'app-examples',
   standalone: true,
@@ -15,14 +14,14 @@ import { ApiService } from '../../services/api.service';
         <label>Example Videos</label>
         <div class="examples-row">
           @for (ex of examples; track ex.name) {
-            <div class="example-card" (click)="onSelect(ex)" [class.loading]="loadingName === ex.name">
+            <div class="example-card" (click)="onSelect(ex)" [class.loading]="loading">
               @if (ex.thumb) {
                 <img [src]="ex.thumb" class="example-thumb" />
               } @else {
                 <div class="example-thumb placeholder-thumb"></div>
               }
               <div class="example-overlay">
-                @if (loadingName === ex.name) {
+                @if (loading) {
                   <mat-spinner diameter="24"></mat-spinner>
                 } @else {
                   <mat-icon>play_circle</mat-icon>
@@ -113,35 +112,36 @@ import { ApiService } from '../../services/api.service';
   `],
 })
 export class ExamplesComponent implements OnInit {
-  @Output() exampleSelected = new EventEmitter<string>(); // emits filename
+  @Input() loading = false;
+  @Output() exampleSelected = new EventEmitter<string>();
+  private http = inject(HttpClient);
+  private cdr = inject(ChangeDetectorRef);
 
-  private api = inject(ApiService);
   examples: Array<{ name: string; url: string; thumb?: string }> = [];
-  loadingName: string | null = null;
 
   ngOnInit() {
-    this.api.getExamples().subscribe({
+    this.loadExamples();
+  }
+
+  private loadExamples(retries = 3) {
+    this.http.get<{ examples: Array<{ name: string; url: string; thumb?: string }> }>('/api/examples').subscribe({
       next: (res) => {
-        this.examples = res.examples;
-        // Load thumbnails
-        for (const ex of this.examples) {
-          this.api.getExampleThumb(ex.name).subscribe({
-            next: (thumbRes) => ex.thumb = 'data:image/png;base64,' + thumbRes.thumb,
-            error: () => {},
-          });
+        this.examples = [...res.examples.map(ex => ({
+          ...ex,
+          thumb: ex.thumb ? 'data:image/png;base64,' + ex.thumb : undefined,
+        }))];
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        if (retries > 0) {
+          setTimeout(() => this.loadExamples(retries - 1), 2000);
         }
       },
-      error: () => {},
     });
   }
 
-  onSelect(ex: { name: string; url: string }) {
-    if (this.loadingName) return;
-    this.loadingName = ex.name;
+  onSelect(ex: { name: string; url: string; thumb?: string }) {
+    if (this.loading) return;
     this.exampleSelected.emit(ex.name);
-  }
-
-  clearLoading() {
-    this.loadingName = null;
   }
 }

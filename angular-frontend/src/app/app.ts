@@ -1,4 +1,4 @@
-import { Component, signal, inject, OnInit, ChangeDetectorRef, ViewChild } from '@angular/core';
+import { Component, signal, inject, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -35,13 +35,13 @@ export class App implements OnInit {
   private cdr = inject(ChangeDetectorRef);
   session = inject(SessionService);
   private currentVideoFile: File | null = null;
-  @ViewChild('examplesComp') examplesComp!: ExamplesComponent;
 
   connected = signal(false);
   isLocalDev = window.location.hostname === 'localhost';
   apiUrlInput = '';
   currentApiUrl = signal('/api');
   uploading = signal(false);
+  exampleLoading = signal(false);
 
   currentFrameSrc = signal<string | null>(null);
   pointMarkers = signal<PointMarker[]>([]);
@@ -102,7 +102,6 @@ export class App implements OnInit {
   }
 
   onExampleSelected(filename: string) {
-    // Delete old session
     const oldSid = this.session.sessionId();
     if (oldSid) {
       this.api.deleteSession(oldSid).subscribe();
@@ -113,28 +112,21 @@ export class App implements OnInit {
     this.fourDVideoUrl.set(null);
     this.pointMarkers.set([]);
     this.currentVideoFile = null;
+    this.exampleLoading.set(true);
 
     this.api.initExample(filename).subscribe({
-      next: async (res) => {
+      next: (res) => {
         this.session.sessionId.set(res.session_id);
         this.session.fps.set(res.fps);
         this.session.totalFrames.set(res.total_frames);
         this.session.videoWidth.set(res.width);
         this.session.videoHeight.set(res.height);
         this.currentFrameSrc.set('data:image/png;base64,' + res.first_frame);
-
-        // Fetch the example video for local frame scrubbing
-        const response = await fetch(`/api/examples/${filename}`);
-        const blob = await response.blob();
-        const file = new File([blob], filename, { type: 'video/mp4' });
-        this.currentVideoFile = file;
-        await this.frameExtractor.loadVideo(file, res.fps);
-
-        this.examplesComp?.clearLoading();
+        this.exampleLoading.set(false);
         this.snackBar.open(`Example loaded: ${res.total_frames} frames`, '', { duration: 2000 });
       },
       error: (err) => {
-        this.examplesComp?.clearLoading();
+        this.exampleLoading.set(false);
         this.snackBar.open('Failed: ' + (err.error?.error || err.message), '', { duration: 3000 });
       },
     });
@@ -176,18 +168,30 @@ export class App implements OnInit {
     });
   }
 
-  async onFrameChange(idx: number) {
+  private frameChangeTimer: any = null;
+
+  onFrameChange(idx: number) {
     this.session.currentFrameIdx.set(idx);
-    // Map reduced frame index to original: frame 5 at step 2 = original frame 10
+
+    // Debounce — wait 150ms after last slider move
+    clearTimeout(this.frameChangeTimer);
+    this.frameChangeTimer = setTimeout(() => this.loadFrame(idx), 150);
+  }
+
+  private async loadFrame(idx: number) {
     const originalIdx = idx * this.session.frameStep();
     try {
       const dataUrl = await this.frameExtractor.getFrame(originalIdx);
       this.currentFrameSrc.set(dataUrl);
+      this.cdr.detectChanges();
     } catch {
       const sid = this.session.sessionId();
       if (sid) {
         this.api.getFrame(sid, originalIdx).subscribe({
-          next: (res) => this.currentFrameSrc.set('data:image/png;base64,' + res.frame),
+          next: (res) => {
+            this.currentFrameSrc.set('data:image/png;base64,' + res.frame);
+            this.cdr.detectChanges();
+          },
           error: () => {},
         });
       }

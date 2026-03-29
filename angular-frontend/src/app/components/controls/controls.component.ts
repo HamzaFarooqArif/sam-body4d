@@ -31,9 +31,15 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
       <!-- Frame Slider -->
       <div class="control-group">
         <label>Frame: {{ currentFrame }} / {{ totalFrames - 1 }}</label>
-        <mat-slider [min]="0" [max]="totalFrames - 1" [step]="1" class="full-width" [disabled]="!hasSession">
-          <input matSliderThumb [(ngModel)]="currentFrame" (ngModelChange)="frameChange.emit($event)" />
-        </mat-slider>
+        <input
+          type="range"
+          [min]="0"
+          [max]="totalFrames - 1"
+          [value]="currentFrame"
+          (input)="onFrameSliderChange(+$any($event.target).value)"
+          [disabled]="!hasSession"
+          class="frame-range"
+        />
         <span class="info-text">{{ timeText }}</span>
       </div>
 
@@ -128,6 +134,12 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
       width: 100%;
     }
 
+    .frame-range {
+      width: 100%;
+      cursor: pointer;
+      accent-color: #7c3aed;
+    }
+
     .info-text {
       color: rgba(255,255,255,0.4);
       font-size: 12px;
@@ -157,6 +169,11 @@ export class ControlsComponent {
     const curSec = this.currentFrame / this.fps;
     const totalSec = this.totalFrames / this.fps;
     return `${this.formatTime(curSec)} / ${this.formatTime(totalSec)}`;
+  }
+
+  onFrameSliderChange(val: number) {
+    this.currentFrame = val;
+    this.frameChange.emit(val);
   }
 
   onFrameRateChange() {

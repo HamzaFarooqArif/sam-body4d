@@ -78,14 +78,28 @@ def create_app(config_path: str = None):
     # ---- Example videos ----
     examples_dir = os.path.join(ROOT, "assets", "examples")
 
+    # Pre-generate example thumbnails at startup
+    example_thumbs = {}
+    if os.path.isdir(examples_dir):
+        for f in sorted(os.listdir(examples_dir)):
+            if f.endswith('.mp4'):
+                frame = pipeline.read_frame_at(os.path.join(examples_dir, f), 10)
+                if frame:
+                    example_thumbs[f] = _image_to_base64(frame)
+        print(f"[Server] Pre-generated {len(example_thumbs)} example thumbnails")
+
     @api.get("/examples")
     def list_examples():
-        """List available example videos."""
+        """List available example videos with pre-generated thumbnails."""
         examples = []
         if os.path.isdir(examples_dir):
             for f in sorted(os.listdir(examples_dir)):
                 if f.endswith('.mp4'):
-                    examples.append({"name": f, "url": f"/api/examples/{f}"})
+                    examples.append({
+                        "name": f,
+                        "url": f"/api/examples/{f}",
+                        "thumb": example_thumbs.get(f),
+                    })
         return {"examples": examples}
 
     @api.get("/examples/{filename}")

@@ -22,12 +22,17 @@ export class FrameExtractorService {
     this.ctx = this.canvas.getContext('2d');
 
     await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Video load timeout')), 10000);
       this.videoEl!.onloadedmetadata = () => {
+        clearTimeout(timeout);
         this.canvas!.width = this.videoEl!.videoWidth;
         this.canvas!.height = this.videoEl!.videoHeight;
         resolve();
       };
-      this.videoEl!.onerror = () => reject(new Error('Failed to load video'));
+      this.videoEl!.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error('Failed to load video'));
+      };
     });
   }
 

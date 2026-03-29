@@ -22,7 +22,7 @@
     <h3>Input</h3>
 
     <app-examples
-      #examplesComp
+      [loading]="exampleLoading()"
       (exampleSelected)="onExampleSelected($event)"
     ></app-examples>
 
