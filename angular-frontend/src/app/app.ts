@@ -151,63 +151,40 @@ export class App implements OnInit {
     const sid = this.session.sessionId();
     if (!sid || this.annotating()) return;
 
-    this.annotating.set(true);
-    this.cdr.detectChanges();
-    const originalIdx = this.session.currentFrameIdx() * this.session.frameStep();
-
-    const pointType = this.session.pointType();
-    const targetId = this.session.currentTargetId();
-
-    this.api.addPoint(
-      sid,
-      originalIdx,
-      coords.x,
-      coords.y,
-      pointType,
-      this.session.videoWidth(),
-      this.session.videoHeight(),
-    ).subscribe({
-      next: (res) => {
-        this.currentFrameSrc.set('data:image/png;base64,' + res.image);
-        this.pointMarkers.update(markers => [
-          ...markers,
-          { x: coords.x, y: coords.y, type: pointType, targetId }
-        ]);
-        this.annotating.set(false);
-        this.cdr.detectChanges();
-      },
-      error: (err) => {
-        const msg = err.error?.error || err.message || '';
-        if (msg.includes('Cannot add new object') || msg.includes('after tracking')) {
-          this.snackBar.open('Cannot add targets after mask generation. Upload video again to start over.', '', { duration: 5000 });
-        } else {
-          this.snackBar.open('Annotation failed: ' + msg, '', { duration: 3000 });
-        }
-        this.annotating.set(false);
-        this.cdr.detectChanges();
-      },
-    });
+    // Add new marker locally
+    const newMarker: PointMarker = {
+      x: coords.x,
+      y: coords.y,
+      type: this.session.pointType(),
+      targetId: this.session.currentTargetId(),
+    };
+    const updated = [...this.pointMarkers(), newMarker];
+    this.pointMarkers.set(updated);
+    this.syncPointsWithPod(updated);
   }
 
   onMarkerRemove(markerIdx: number) {
     const sid = this.session.sessionId();
     if (!sid || this.annotating()) return;
 
-    // Remove marker locally
-    const remaining = this.pointMarkers().filter((_, i) => i !== markerIdx);
-    this.pointMarkers.set(remaining);
+    const updated = this.pointMarkers().filter((_, i) => i !== markerIdx);
+    this.pointMarkers.set(updated);
 
-    if (remaining.length === 0) {
-      // No points left — just reset session frame
+    if (updated.length === 0) {
       this.onFrameChange(this.session.currentFrameIdx());
       return;
     }
+    this.syncPointsWithPod(updated);
+  }
 
-    // Re-send all remaining points to pod
+  private syncPointsWithPod(markers: PointMarker[]) {
+    const sid = this.session.sessionId();
+    if (!sid) return;
+
     this.annotating.set(true);
     this.cdr.detectChanges();
 
-    const points = remaining.map(m => ({
+    const points = markers.map(m => ({
       frame_idx: this.session.currentFrameIdx() * this.session.frameStep(),
       x: Math.round(m.x),
       y: Math.round(m.y),
@@ -226,7 +203,7 @@ export class App implements OnInit {
         this.cdr.detectChanges();
       },
       error: (err) => {
-        this.snackBar.open('Failed to update points: ' + (err.error?.error || ''), '', { duration: 3000 });
+        this.snackBar.open('Annotation failed: ' + (err.error?.error || ''), '', { duration: 3000 });
         this.annotating.set(false);
         this.cdr.detectChanges();
       },
