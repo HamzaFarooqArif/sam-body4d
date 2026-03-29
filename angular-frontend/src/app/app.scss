@@ -1,0 +1,73 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .title {
+    font-weight: 600;
+    font-size: 18px;
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .api-input {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    .url-input {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 4px;
+      padding: 4px 8px;
+      color: white;
+      font-size: 13px;
+      width: 300px;
+
+      &:focus {
+        outline: none;
+        border-color: rgba(255,255,255,0.5);
+      }
+    }
+
+    .connected {
+      color: #4ade80;
+    }
+  }
+}
+
+.layout {
+  display: flex;
+  gap: 24px;
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+
+  @media (max-width: 900px) {
+    flex-direction: column;
+  }
+}
+
+.panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  h3 {
+    margin: 0;
+    color: rgba(255,255,255,0.8);
+    font-size: 16px;
+    font-weight: 600;
+  }
+}
+
+.left-panel {
+  max-width: 600px;
+}
+
+.right-panel {
+  max-width: 600px;
+}

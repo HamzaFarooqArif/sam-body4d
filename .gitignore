@@ -9,3 +9,6 @@ save_video.py
 img_vid_concat.py
 build/
 mhr_smpl_conversion/
+angular-frontend/node_modules/
+angular-frontend/dist/
+angular-frontend/.angular/

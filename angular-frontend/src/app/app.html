@@ -1,0 +1,67 @@
+<mat-toolbar color="primary" class="toolbar">
+  <mat-icon>view_in_ar</mat-icon>
+  <span class="title">SAM-Body4D</span>
+  <span class="spacer"></span>
+  <div class="api-input">
+    <input
+      matInput
+      [(ngModel)]="apiUrl"
+      placeholder="API URL"
+      class="url-input"
+    />
+    <button mat-icon-button (click)="checkConnection()">
+      <mat-icon [class.connected]="connected()">
+        {{ connected() ? 'cloud_done' : 'cloud_off' }}
+      </mat-icon>
+    </button>
+  </div>
+</mat-toolbar>
+
+<div class="layout">
+  <!-- Left Panel -->
+  <div class="panel left-panel">
+    <h3>Input</h3>
+
+    <app-video-upload
+      [uploading]="uploading()"
+      (fileSelected)="onFileSelected($event)"
+    ></app-video-upload>
+
+    <app-frame-viewer
+      [imageSrc]="currentFrameSrc()"
+      [interactive]="session.hasSession()"
+      (frameClick)="onFrameClick($event)"
+    ></app-frame-viewer>
+
+    <app-controls
+      [hasSession]="session.hasSession()"
+      [totalFrames]="session.totalFrames()"
+      [fps]="session.fps()"
+      [pointType]="session.pointType()"
+      [targets]="session.targets()"
+      (frameChange)="onFrameChange($event)"
+      (pointTypeChange)="session.pointType.set($any($event))"
+      (addTarget)="onAddTarget()"
+      (applyFrameRate)="onApplyFrameRate($event)"
+    ></app-controls>
+  </div>
+
+  <!-- Right Panel -->
+  <div class="panel right-panel">
+    <h3>Results</h3>
+
+    <app-results
+      [canGenerate]="session.hasSession()"
+      [maskGenerating]="maskGenerating()"
+      [maskProgress]="maskProgress()"
+      [maskElapsed]="maskElapsed()"
+      [maskVideoUrl]="maskVideoUrl()"
+      [fourDGenerating]="fourDGenerating()"
+      [fourDProgress]="fourDProgress()"
+      [fourDElapsed]="fourDElapsed()"
+      [fourDVideoUrl]="fourDVideoUrl()"
+      (generateMasks)="onGenerateMasks()"
+      (generate4d)="onGenerate4d()"
+    ></app-results>
+  </div>
+</div>

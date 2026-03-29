@@ -60,6 +60,16 @@ def create_app(config_path: str = None):
     # ---- FastAPI (API on port 8000) ----
     api = FastAPI(title="SAM-Body4D API")
 
+    # ---- CORS — allow Angular dev server and any origin ----
+    from fastapi.middleware.cors import CORSMiddleware
+    api.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     @api.get("/health")
     def health():
         return {"status": "ready"}
