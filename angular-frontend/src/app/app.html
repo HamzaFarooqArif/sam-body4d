@@ -43,17 +43,25 @@
 
     <app-controls
       [hasSession]="session.hasSession()"
+      [hasVideo]="currentVideoFile !== null"
       [currentFrame]="session.currentFrameIdx()"
-      [totalFrames]="session.effectiveFrames()"
+      [totalFrames]="session.totalFrames()"
+      [maxFrames]="session.totalFrames()"
       [fps]="session.fps()"
       [pointType]="session.pointType()"
       [targets]="session.targets()"
       [resetting]="resetting()"
+      [applying]="applying()"
+      [rangeStart]="session.rangeStart()"
+      [rangeEnd]="session.rangeEnd()"
       (frameChange)="onFrameChange($event)"
       (pointTypeChange)="session.pointType.set($any($event))"
       (addTarget)="onAddTarget()"
       (applyFrameRate)="onApplyFrameRate($event)"
+      (applySettings)="onApplySettings()"
       (resetTargets)="onResetTargets()"
+      (rangeStartChange)="session.rangeStart.set($event)"
+      (rangeEndChange)="session.rangeEnd.set($event)"
     ></app-controls>
   </div>
 

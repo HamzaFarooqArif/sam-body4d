@@ -34,7 +34,7 @@ export class App implements OnInit {
   private frameExtractor = inject(FrameExtractorService);
   private cdr = inject(ChangeDetectorRef);
   session = inject(SessionService);
-  private currentVideoFile: File | null = null;
+  currentVideoFile: File | null = null;
 
   connected = signal(false);
   isLocalDev = window.location.hostname === 'localhost';
@@ -120,45 +120,167 @@ export class App implements OnInit {
     this.exampleLoadingName.set(null);
   }
 
-  onFileSelected(file: File) {
-    // Delete old session to free GPU memory
-    const oldSid = this.session.sessionId();
-    if (oldSid) {
-      this.api.deleteSession(oldSid).subscribe();
-    }
-
-    this.uploading.set(true);
+  async onFileSelected(file: File) {
+    // Local only — no backend upload yet
     this.session.reset();
     this.maskVideoUrl.set(null);
     this.fourDVideoUrl.set(null);
     this.pointMarkers.set([]);
     this.currentVideoFile = file;
 
-    this.api.initVideo(file).subscribe({
-      next: async (res) => {
-        this.session.sessionId.set(res.session_id);
-        this.session.fps.set(res.fps);
-        this.session.totalFrames.set(res.total_frames);
-        this.session.videoWidth.set(res.width);
-        this.session.videoHeight.set(res.height);
-        this.currentFrameSrc.set('data:image/png;base64,' + res.first_frame);
+    try {
+      // Use frame extractor to load — it creates a video element internally
+      const fps = 30; // estimate, corrected by backend after Apply
+      await this.frameExtractor.loadVideo(file, fps);
 
-        // Load video locally for fast frame scrubbing
-        try {
-          await this.frameExtractor.loadVideo(file, res.fps);
-        } catch {
-          // Local scrubbing unavailable — frame slider will use API fallback
-          this.frameExtractor.cleanup();
-        }
+      // Get metadata from frame extractor's video element
+      const videoEl = (this.frameExtractor as any).videoEl as HTMLVideoElement;
+      const duration = videoEl.duration || 1;
+      const totalFrames = Math.round(duration * fps);
 
-        this.uploading.set(false);
-        this.snackBar.open(`Video loaded: ${res.total_frames} frames`, '', { duration: 2000 });
-      },
-      error: (err) => {
-        this.uploading.set(false);
-        this.snackBar.open('Upload failed: ' + (err.error?.error || err.message), '', { duration: 5000 });
-      },
-    });
+      this.session.fps.set(fps);
+      this.session.totalFrames.set(totalFrames);
+      this.session.rangeStart.set(0);
+      this.session.rangeEnd.set(totalFrames);
+      this.session.videoWidth.set(videoEl.videoWidth);
+      this.session.videoHeight.set(videoEl.videoHeight);
+      this.session.currentFrameIdx.set(0);
+
+      const firstFrame = await this.frameExtractor.getFrame(0);
+      this.currentFrameSrc.set(firstFrame);
+
+      this.snackBar.open(`Video loaded: ${totalFrames} frames. Adjust range/framerate and click Apply & Upload.`, '', { duration: 4000 });
+    } catch (e) {
+      this.frameExtractor.cleanup();
+      this.currentVideoFile = null;
+      this.snackBar.open('Failed to load video: ' + e, '', { duration: 3000 });
+    }
+  }
+
+  applying = signal(false);
+
+  async onApplySettings() {
+    const file = this.currentVideoFile;
+    if (!file) return;
+
+    // Delete old session
+    const oldSid = this.session.sessionId();
+    if (oldSid) {
+      this.api.deleteSession(oldSid).subscribe();
+    }
+
+    this.applying.set(true);
+    this.session.sessionId.set(null);
+    this.pointMarkers.set([]);
+    this.maskVideoUrl.set(null);
+    this.fourDVideoUrl.set(null);
+    this.session.annotationFrameIdx.set(null);
+    this.session.targets.set([]);
+    this.session.currentTargetId.set(1);
+
+    const rangeStart = this.session.rangeStart();
+    const rangeEnd = this.session.rangeEnd();
+    const frameStep = this.session.frameStep();
+
+    try {
+      // Trim video: extract range + framerate into a new file
+      const trimmedFile = await this.trimVideo(file, rangeStart, rangeEnd, frameStep);
+
+      // Upload trimmed video to backend
+      this.api.initVideo(trimmedFile).subscribe({
+        next: async (res) => {
+          this.session.sessionId.set(res.session_id);
+          this.session.fps.set(res.fps);
+          this.session.videoWidth.set(res.width);
+          this.session.videoHeight.set(res.height);
+
+          // Load trimmed video for scrubbing
+          try {
+            await this.frameExtractor.loadVideo(trimmedFile, res.fps);
+          } catch {
+            this.frameExtractor.cleanup();
+          }
+
+          // Update total frames to trimmed count
+          this.session.totalFrames.set(res.total_frames);
+          this.session.rangeStart.set(0);
+          this.session.rangeEnd.set(res.total_frames);
+          this.session.frameStep.set(1); // already applied in trim
+          this.session.currentFrameIdx.set(0);
+          this.currentFrameSrc.set('data:image/png;base64,' + res.first_frame);
+
+          this.applying.set(false);
+          this.snackBar.open(`Uploaded: ${res.total_frames} frames`, '', { duration: 2000 });
+        },
+        error: (err) => {
+          this.applying.set(false);
+          this.snackBar.open('Upload failed: ' + (err.error?.error || err.message), '', { duration: 5000 });
+        },
+      });
+    } catch {
+      this.applying.set(false);
+      this.snackBar.open('Failed to trim video', '', { duration: 3000 });
+    }
+  }
+
+  private async trimVideo(file: File, rangeStart: number, rangeEnd: number, frameStep: number): Promise<File> {
+    // If no trimming needed, return original
+    const totalFrames = this.session.totalFrames();
+    if (rangeStart === 0 && rangeEnd === totalFrames && frameStep === 1) {
+      return file;
+    }
+
+    const fps = this.session.fps();
+    const videoEl = document.createElement('video');
+    videoEl.muted = true;
+    videoEl.src = URL.createObjectURL(file);
+    await new Promise<void>(r => { videoEl.onloadedmetadata = () => r(); });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    const ctx = canvas.getContext('2d')!;
+
+    // Collect frames
+    const frames: Blob[] = [];
+    const outputFps = fps / frameStep;
+
+    for (let i = rangeStart; i < rangeEnd; i += frameStep) {
+      videoEl.currentTime = i / fps;
+      await new Promise<void>(r => { videoEl.onseeked = () => r(); });
+      ctx.drawImage(videoEl, 0, 0);
+      const blob = await new Promise<Blob>((r) => canvas.toBlob(b => r(b!), 'image/jpeg', 0.9));
+      frames.push(blob);
+    }
+
+    URL.revokeObjectURL(videoEl.src);
+
+    // Encode frames to video using MediaRecorder
+    const stream = canvas.captureStream(outputFps);
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+    const chunks: Blob[] = [];
+
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+    const recordingDone = new Promise<void>(r => { recorder.onstop = () => r(); });
+    recorder.start();
+
+    for (let i = 0; i < frames.length; i++) {
+      const img = new Image();
+      img.src = URL.createObjectURL(frames[i]);
+      await new Promise<void>(r => { img.onload = () => r(); });
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(img.src);
+      // Wait one frame duration
+      await new Promise(r => setTimeout(r, 1000 / outputFps));
+    }
+
+    recorder.stop();
+    stream.getTracks().forEach(t => t.stop());
+    await recordingDone;
+
+    const webmBlob = new Blob(chunks, { type: 'video/webm' });
+    return new File([webmBlob], 'trimmed.webm', { type: 'video/webm' });
   }
 
   private frameChangeTimer: any = null;

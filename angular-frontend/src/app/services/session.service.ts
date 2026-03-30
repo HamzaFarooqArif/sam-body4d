@@ -13,9 +13,14 @@ export class SessionService {
   readonly targets = signal<string[]>([]);
   readonly currentTargetId = signal<number>(1);
   readonly annotationFrameIdx = signal<number | null>(null);
+  readonly rangeStart = signal<number>(0);
+  readonly rangeEnd = signal<number>(0);
 
   readonly hasSession = computed(() => this.sessionId() !== null);
-  readonly effectiveFrames = computed(() => Math.ceil(this.totalFrames() / this.frameStep()));
+  readonly effectiveFrames = computed(() => {
+    const rangeFrames = this.rangeEnd() - this.rangeStart();
+    return Math.max(1, Math.ceil(rangeFrames / this.frameStep()));
+  });
 
   reset() {
     this.sessionId.set(null);
@@ -29,5 +34,7 @@ export class SessionService {
     this.targets.set([]);
     this.currentTargetId.set(1);
     this.annotationFrameIdx.set(null);
+    this.rangeStart.set(0);
+    this.rangeEnd.set(0);
   }
 }

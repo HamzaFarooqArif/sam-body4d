@@ -110,6 +110,15 @@ def create_app(config_path: str = None):
             tmp.write(content)
             tmp_path = tmp.name
 
+        # Convert non-MP4 (e.g. WebM) to MP4 for SAM-3 compatibility
+        if not tmp_path.endswith('.mp4'):
+            import subprocess
+            mp4_path = tmp_path.rsplit('.', 1)[0] + '.mp4'
+            subprocess.run(['ffmpeg', '-i', tmp_path, '-c:v', 'libx264', '-preset', 'fast', '-y', mp4_path],
+                           capture_output=True, timeout=120)
+            os.unlink(tmp_path)
+            tmp_path = mp4_path
+
         runtime = pipeline.init_video_state(tmp_path)
         output_dir = os.path.join(ROOT, "outputs", _gen_id())
         os.makedirs(output_dir, exist_ok=True)
@@ -264,7 +273,6 @@ def create_app(config_path: str = None):
         if not session:
             return JSONResponse({"error": "Invalid session_id"}, status_code=404)
 
-        # Store frame_step in runtime so pipeline can use it
         session['runtime']['frame_step'] = frame_step
 
         job_id = _gen_id()

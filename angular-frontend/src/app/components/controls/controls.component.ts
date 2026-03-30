@@ -14,15 +14,28 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
   imports: [CommonModule, FormsModule, MatSliderModule, MatButtonModule, MatButtonToggleModule, MatChipsModule, MatIconModule, MatProgressSpinnerModule],
   template: `
     <div class="controls">
+      <!-- Frame Range -->
+      <div class="control-group">
+        <label>Processing Range: {{ rangeStart }} — {{ rangeEnd }} ({{ rangeEnd - rangeStart }} frames)</label>
+        <mat-slider [min]="0" [max]="maxFrames - 1" [step]="1" class="full-width" [disabled]="!hasVideo">
+          <input matSliderStartThumb [value]="rangeStart" (valueChange)="onRangeStartChange($event)" />
+          <input matSliderEndThumb [value]="rangeEnd" (valueChange)="onRangeEndChange($event)" />
+        </mat-slider>
+      </div>
+
       <!-- Frame Rate -->
       <div class="control-group">
         <label>Processing Frame Rate: {{ frameRatePercent }}%</label>
         <div class="framerate-row">
-          <mat-slider min="10" max="100" step="5" class="full-width" [disabled]="!hasSession">
+          <mat-slider min="10" max="100" step="5" class="full-width" [disabled]="!hasVideo">
             <input matSliderThumb [(ngModel)]="frameRatePercent" (ngModelChange)="onFrameRateChange()" />
           </mat-slider>
-          <button mat-stroked-button (click)="applyFrameRate.emit(frameRatePercent)" [disabled]="!hasSession">
-            Apply
+          <button mat-flat-button color="primary" (click)="applySettings.emit()" [disabled]="!hasVideo || applying">
+            @if (applying) {
+              Uploading...
+            } @else {
+              Apply & Upload
+            }
           </button>
         </div>
         <span class="info-text">{{ frameInfo }}</span>
@@ -30,8 +43,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
       <!-- Frame Slider -->
       <div class="control-group">
-        <label>Frame: {{ currentFrame }} / {{ totalFrames - 1 }}</label>
-        <mat-slider [min]="0" [max]="totalFrames - 1" [step]="1" class="full-width" [disabled]="!hasSession">
+        <label>Frame: {{ currentFrame }} / {{ rangeEnd - 1 }}</label>
+        <mat-slider [min]="rangeStart" [max]="rangeEnd - 1" [step]="1" class="full-width" [disabled]="!hasSession">
           <input matSliderThumb [value]="currentFrame" (valueChange)="onFrameSliderChange($event)" />
         </mat-slider>
         <span class="info-text">{{ timeText }}</span>
@@ -142,17 +155,25 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 })
 export class ControlsComponent {
   @Input() hasSession = false;
+  @Input() hasVideo = false;
   @Input() totalFrames = 0;
+  @Input() maxFrames = 0;
+  @Input() applying = false;
   @Input() fps = 30;
   @Input() pointType: 'positive' | 'negative' = 'positive';
   @Input() targets: string[] = [];
   @Input() resetting = false;
+  @Input() rangeStart = 0;
+  @Input() rangeEnd = 0;
 
   @Output() frameChange = new EventEmitter<number>();
   @Output() pointTypeChange = new EventEmitter<string>();
   @Output() addTarget = new EventEmitter<void>();
   @Output() applyFrameRate = new EventEmitter<number>();
+  @Output() applySettings = new EventEmitter<void>();
   @Output() resetTargets = new EventEmitter<void>();
+  @Output() rangeStartChange = new EventEmitter<number>();
+  @Output() rangeEndChange = new EventEmitter<number>();
 
   @Input() currentFrame = 0;
   frameRatePercent = 100;
@@ -163,6 +184,22 @@ export class ControlsComponent {
     const curSec = this.currentFrame / this.fps;
     const totalSec = this.totalFrames / this.fps;
     return `${this.formatTime(curSec)} / ${this.formatTime(totalSec)}`;
+  }
+
+  onRangeStartChange(val: number) {
+    this.rangeStart = val;
+    this.rangeStartChange.emit(val);
+    if (this.currentFrame < val) {
+      this.onFrameSliderChange(val);
+    }
+  }
+
+  onRangeEndChange(val: number) {
+    this.rangeEnd = val;
+    this.rangeEndChange.emit(val);
+    if (this.currentFrame >= val) {
+      this.onFrameSliderChange(val - 1);
+    }
   }
 
   onFrameSliderChange(val: number) {
