@@ -25,7 +25,7 @@ REPO="${WORKSPACE}/sam-body4d"
 # ---- Step 1: System dependencies ----
 echo "[1/6] Installing system dependencies..."
 apt-get update -qq && apt-get install -y -qq --no-install-recommends \
-    ffmpeg libgl1-mesa-glx libglib2.0-0 libsm6 libxrender1 libxext6 \
+    ffmpeg libgl1 libglib2.0-0 libsm6 libxrender1 libxext6 \
     libegl1-mesa-dev libgles2-mesa-dev libglfw3 libglfw3-dev \
     libosmesa6-dev > /dev/null 2>&1
 echo "[OK]  System dependencies installed"
