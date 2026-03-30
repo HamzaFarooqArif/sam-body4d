@@ -8,21 +8,29 @@ For project introduction and model details, see the [`feature/frontend-backend-s
 ## RunPod Deployment
 
 ### Hardware Requirements
-- **GPU**: 48 GB+ VRAM — A40 ($0.40/hr), A6000 ($0.49/hr), RTX 6000 Ada ($0.77/hr)
+- **GPU**: 24 GB+ VRAM (minimum), 48 GB+ recommended
 - **System RAM**: 62 GB+ recommended
 - **RunPod template**: `runpod/pytorch` (any version)
 - **Container disk**: 20 GB+
 - **Volume disk**: 50 GB (persists checkpoints across stops)
 - **HTTP port**: `7860`
 
+### Tested GPUs
+| GPU | VRAM | Cost/hr | Status |
+|-----|------|---------|--------|
+| RTX 6000 Ada | 48 GB | $0.77 | Tested, works |
+| A40 | 48 GB | $0.40 | Tested, works |
+| H100 | 80 GB | $2.69 | Tested, works (fastest) |
+| RTX 5090 | 32 GB | $1.78 | Tested, needs PyTorch nightly (auto-detected) |
+
 ### Resource Usage
-| Resource | Usage |
-|----------|-------|
-| GPU VRAM | ~28 GB peak |
-| System RAM | ~25 GB |
-| Disk (checkpoints) | ~15 GB |
-| Processing (100% fps) | ~6 min/video |
-| Processing (50% fps) | ~3 min/video |
+| Resource | Idle (models loaded) | Peak (processing) |
+|----------|---------------------|-------------------|
+| GPU VRAM | ~22 GB | ~22-28 GB |
+| System RAM | ~25 GB | ~96 GB |
+| Disk (checkpoints) | ~15 GB | |
+| Processing (100% fps) | | ~6 min/video |
+| Processing (50% fps) | | ~3 min/video |
 
 ### First-time Setup
 1. Create a RunPod GPU pod with the requirements above
