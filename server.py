@@ -187,44 +187,6 @@ def create_app(config_path: str = None):
         session['runtime'] = pipeline.add_target(session['runtime'])
         return JSONResponse({"status": "ok", "current_id": session['runtime']['id']})
 
-    @api.post("/session_generate_masks")
-    async def session_generate_masks(session_id: str = Form(...)):
-        """Run SAM-3 mask propagation for the session."""
-        import torch
-        session = sessions.get(session_id)
-        if not session:
-            return JSONResponse({"error": "Invalid session_id"}, status_code=404)
-        with torch.autocast("cuda", dtype=torch.bfloat16):
-            mask_video = pipeline.generate_masks(session['runtime'], session['output_dir'])
-        return FileResponse(mask_video, media_type="video/mp4", filename="mask_video.mp4")
-
-    @api.post("/session_generate_4d")
-    async def session_generate_4d(session_id: str = Form(...)):
-        """Run 4D reconstruction for the session."""
-        session = sessions.get(session_id)
-        if not session:
-            return JSONResponse({"error": "Invalid session_id"}, status_code=404)
-
-        import torch
-        with torch.autocast("cuda", enabled=False):
-            result_video = pipeline.generate_4d(session['runtime'], session['output_dir'])
-
-        # Zip results
-        output_dir = session['output_dir']
-        zip_path = f"{output_dir}/results.zip"
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            if os.path.exists(result_video):
-                zf.write(result_video, "rendered_video.mp4")
-            mesh_dir = f"{output_dir}/mesh_4d_individual"
-            if os.path.isdir(mesh_dir):
-                for dirpath, dirnames, filenames in os.walk(mesh_dir):
-                    for f in filenames:
-                        full = os.path.join(dirpath, f)
-                        arcname = os.path.join("meshes", os.path.relpath(full, mesh_dir))
-                        zf.write(full, arcname)
-
-        return FileResponse(zip_path, media_type="application/zip", filename="sam_body4d_results.zip")
-
     @api.post("/delete_session")
     async def delete_session(session_id: str = Form(...)):
         """Clean up a session and free GPU memory."""
@@ -236,6 +198,14 @@ def create_app(config_path: str = None):
             if os.path.exists(session.get('video_path', '')):
                 try:
                     os.unlink(session['video_path'])
+                except OSError:
+                    pass
+            # Delete output directory
+            import shutil
+            output_dir = session.get('output_dir', '')
+            if output_dir and os.path.isdir(output_dir):
+                try:
+                    shutil.rmtree(output_dir)
                 except OSError:
                     pass
             # Clear runtime references to free GPU tensors

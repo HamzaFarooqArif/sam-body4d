@@ -45,7 +45,7 @@
       [hasSession]="session.hasSession()"
       [hasVideo]="currentVideoFile !== null"
       [currentFrame]="session.currentFrameIdx()"
-      [totalFrames]="session.totalFrames()"
+      [totalFrames]="session.effectiveFrames()"
       [maxFrames]="session.totalFrames()"
       [fps]="session.fps()"
       [pointType]="session.pointType()"

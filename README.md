@@ -89,14 +89,20 @@ Everything on one port:
 | `/api/process` | POST | One-shot: video in, results out |
 
 ### Workflow
-1. Upload video or click an example
-2. Navigate to a frame where targets are visible
-3. Click to annotate (positive/negative points)
-4. Add Target for each person
-5. Mask Generation — tracks targets across all frames
-6. 4D Generation — recovers 3D meshes
+1. Upload video or click an example (loads locally, no backend yet)
+2. Adjust **Processing Range** (start/end frames) and **Frame Rate** (%)
+3. Click **Apply & Upload** — trims to range, uploads to backend
+4. Navigate to a frame where targets are visible
+5. Click to annotate (positive/negative points)
+6. Add Target for each person
+7. Mask Generation — tracks targets across all frames
+8. 4D Generation — recovers 3D meshes
 
-**Note:** All targets must be annotated on the same frame (SAM-3 limitation).
+**Notes:**
+- All targets must be annotated on the same frame (SAM-3 limitation)
+- Range trimming happens on frontend (browser), backend receives pre-trimmed video
+- Frame rate reduction handled by backend via frame_step
+- Non-MP4 uploads (e.g. WebM from trimming) auto-converted on backend via ffmpeg
 
 
 ## Local Angular Development

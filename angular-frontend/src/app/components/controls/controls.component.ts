@@ -30,7 +30,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
           <mat-slider min="10" max="100" step="5" class="full-width" [disabled]="!hasVideo">
             <input matSliderThumb [(ngModel)]="frameRatePercent" (ngModelChange)="onFrameRateChange()" />
           </mat-slider>
-          <button mat-flat-button color="primary" (click)="applySettings.emit()" [disabled]="!hasVideo || applying">
+          <button mat-flat-button color="primary" (click)="onApplyClick()" [disabled]="!hasVideo || applying">
             @if (applying) {
               Uploading...
             } @else {
@@ -43,8 +43,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
       <!-- Frame Slider -->
       <div class="control-group">
-        <label>Frame: {{ currentFrame }} / {{ rangeEnd - 1 }}</label>
-        <mat-slider [min]="rangeStart" [max]="rangeEnd - 1" [step]="1" class="full-width" [disabled]="!hasSession">
+        <label>Frame: {{ currentFrame }} / {{ totalFrames - 1 }}</label>
+        <mat-slider [min]="0" [max]="totalFrames - 1" [step]="1" class="full-width" [disabled]="!hasSession">
           <input matSliderThumb [value]="currentFrame" (valueChange)="onFrameSliderChange($event)" />
         </mat-slider>
         <span class="info-text">{{ timeText }}</span>
@@ -184,6 +184,12 @@ export class ControlsComponent {
     const curSec = this.currentFrame / this.fps;
     const totalSec = this.totalFrames / this.fps;
     return `${this.formatTime(curSec)} / ${this.formatTime(totalSec)}`;
+  }
+
+  onApplyClick() {
+    // Emit framerate before applying so parent can set frameStep
+    this.applyFrameRate.emit(this.frameRatePercent);
+    this.applySettings.emit();
   }
 
   onRangeStartChange(val: number) {

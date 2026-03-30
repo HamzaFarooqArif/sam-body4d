@@ -104,17 +104,39 @@ export class App implements OnInit {
   async onExampleSelected(filename: string) {
     this.exampleLoadingName.set(filename);
     try {
-      const response = await fetch(`/examples/${filename}`);
+      // Load locally using URL directly (no blob conversion)
+      this.session.reset();
+      this.maskVideoUrl.set(null);
+      this.fourDVideoUrl.set(null);
+      this.pointMarkers.set([]);
+
+      const url = `/examples/${filename}`;
+      const fps = 30;
+      await this.frameExtractor.loadVideo(url, fps);
+
+      const videoEl = (this.frameExtractor as any).videoEl as HTMLVideoElement;
+      const duration = videoEl.duration || 1;
+      const totalFrames = Math.round(duration * fps);
+
+      this.session.fps.set(fps);
+      this.session.totalFrames.set(totalFrames);
+      this.session.rangeStart.set(0);
+      this.session.rangeEnd.set(totalFrames);
+      this.session.videoWidth.set(videoEl.videoWidth);
+      this.session.videoHeight.set(videoEl.videoHeight);
+      this.session.currentFrameIdx.set(0);
+
+      const firstFrame = await this.frameExtractor.getFrame(0);
+      this.currentFrameSrc.set(firstFrame);
+
+      // Fetch as file for Apply & Upload later
+      const response = await fetch(url);
       const blob = await response.blob();
+      this.currentVideoFile = new File([blob], filename, { type: 'video/mp4' });
 
-      // Verify we got a video, not HTML (SPA fallback)
-      if (blob.type && !blob.type.startsWith('video')) {
-        throw new Error('Got HTML instead of video');
-      }
-
-      const file = new File([blob], filename, { type: 'video/mp4' });
-      this.onFileSelected(file);
-    } catch {
+      this.snackBar.open(`Example loaded: ${totalFrames} frames`, '', { duration: 3000 });
+    } catch (e) {
+      console.error('Example load failed:', e);
       this.snackBar.open('Failed to load example', '', { duration: 3000 });
     }
     this.exampleLoadingName.set(null);
@@ -150,10 +172,12 @@ export class App implements OnInit {
       this.currentFrameSrc.set(firstFrame);
 
       this.snackBar.open(`Video loaded: ${totalFrames} frames. Adjust range/framerate and click Apply & Upload.`, '', { duration: 4000 });
-    } catch (e) {
+    } catch (e: any) {
       this.frameExtractor.cleanup();
       this.currentVideoFile = null;
-      this.snackBar.open('Failed to load video: ' + e, '', { duration: 3000 });
+      const msg = e?.message || e?.toString() || 'Unknown error';
+      console.error('Video load failed:', e);
+      this.snackBar.open('Failed to load video: ' + msg, '', { duration: 5000 });
     }
   }
 
@@ -205,7 +229,7 @@ export class App implements OnInit {
           this.session.totalFrames.set(res.total_frames);
           this.session.rangeStart.set(0);
           this.session.rangeEnd.set(res.total_frames);
-          this.session.frameStep.set(1); // already applied in trim
+          // Keep frameStep — backend uses it during generation
           this.session.currentFrameIdx.set(0);
           this.currentFrameSrc.set('data:image/png;base64,' + res.first_frame);
 
@@ -223,10 +247,10 @@ export class App implements OnInit {
     }
   }
 
-  private async trimVideo(file: File, rangeStart: number, rangeEnd: number, frameStep: number): Promise<File> {
-    // If no trimming needed, return original
+  private async trimVideo(file: File, rangeStart: number, rangeEnd: number, _frameStep: number): Promise<File> {
+    // Only trim range — frameStep handled by backend
     const totalFrames = this.session.totalFrames();
-    if (rangeStart === 0 && rangeEnd === totalFrames && frameStep === 1) {
+    if (rangeStart === 0 && rangeEnd === totalFrames) {
       return file;
     }
 
@@ -241,11 +265,11 @@ export class App implements OnInit {
     canvas.height = videoEl.videoHeight;
     const ctx = canvas.getContext('2d')!;
 
-    // Collect frames
+    // Collect frames — every frame in range (frameStep handled by backend)
     const frames: Blob[] = [];
-    const outputFps = fps / frameStep;
+    const outputFps = fps;
 
-    for (let i = rangeStart; i < rangeEnd; i += frameStep) {
+    for (let i = rangeStart; i < rangeEnd; i++) {
       videoEl.currentTime = i / fps;
       await new Promise<void>(r => { videoEl.onseeked = () => r(); });
       ctx.drawImage(videoEl, 0, 0);
