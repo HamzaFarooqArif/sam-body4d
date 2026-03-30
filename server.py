@@ -53,6 +53,9 @@ def create_app(config_path: str = None):
     pipeline = Pipeline(config_path)
     print("Models loaded. Starting server...")
 
+    # ---- Ensure outputs directory exists ----
+    os.makedirs(os.path.join(ROOT, "outputs"), exist_ok=True)
+
     # ---- Session state (per-video interactive sessions) ----
     sessions = {}  # session_id -> { runtime, output_dir, video_path }
 
