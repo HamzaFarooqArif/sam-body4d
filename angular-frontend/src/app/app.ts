@@ -187,10 +187,12 @@ export class App implements OnInit {
     const file = this.currentVideoFile;
     if (!file) return;
 
-    // Delete old session
+    // Delete old session and wait for GPU memory to free
     const oldSid = this.session.sessionId();
     if (oldSid) {
-      this.api.deleteSession(oldSid).subscribe();
+      await new Promise<void>(resolve => {
+        this.api.deleteSession(oldSid).subscribe({ next: () => resolve(), error: () => resolve() });
+      });
     }
 
     this.applying.set(true);
@@ -394,16 +396,18 @@ export class App implements OnInit {
 
   resetting = signal(false);
 
-  onResetTargets() {
+  async onResetTargets() {
     const file = this.currentVideoFile;
     if (!file || this.resetting()) return;
 
     this.resetting.set(true);
 
-    // Delete old session to free GPU memory
+    // Delete old session and wait for GPU memory to free
     const oldSid = this.session.sessionId();
     if (oldSid) {
-      this.api.deleteSession(oldSid).subscribe();
+      await new Promise<void>(resolve => {
+        this.api.deleteSession(oldSid).subscribe({ next: () => resolve(), error: () => resolve() });
+      });
     }
 
     this.pointMarkers.set([]);
