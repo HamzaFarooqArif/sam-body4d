@@ -61,28 +61,34 @@ detect_cuda_index() {
     local cuda_minor=$(echo "$cuda_ver" | cut -d. -f2)
 
     if [ -z "$cuda_major" ] || [ -z "$cuda_ver" ]; then
-        # No CUDA/GPU detected — install CPU-only (won't run models but won't crash setup)
         echo "cpu"
+    elif [ "$cuda_major" = "12" ] && [ "$cuda_minor" -ge 8 ]; then
+        # CUDA 12.8+ (Blackwell: RTX 5090, etc.) — needs nightly with cu128
+        echo "nightly_cu128"
     elif [ "$cuda_major" = "12" ]; then
-        # Try cu126 first (works for CUDA 12.6+), then cu124, then cu121
         for idx in cu126 cu124 cu121; do
             if pip install --dry-run torch==2.7.1 --index-url "https://download.pytorch.org/whl/${idx}" -q 2>/dev/null; then
                 echo "$idx"
                 return
             fi
         done
-        echo "cu126"  # fallback
+        echo "cu126"
     elif [ "$cuda_major" = "11" ]; then
         echo "cu118"
     else
-        echo "cu126"  # default
+        echo "cu126"
     fi
 }
 
 if ! python -c "import torch; torch.cuda.is_available()" 2>/dev/null; then
     CUDA_IDX=$(detect_cuda_index)
     echo "  Detected CUDA index: ${CUDA_IDX}"
-    pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url "https://download.pytorch.org/whl/${CUDA_IDX}" -q
+    if [ "$CUDA_IDX" = "nightly_cu128" ]; then
+        echo "  Installing PyTorch nightly for Blackwell GPU..."
+        pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128 -q
+    else
+        pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url "https://download.pytorch.org/whl/${CUDA_IDX}" -q
+    fi
 else
     echo "  (PyTorch already installed)"
 fi
